@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "tuple": "cpp",
+        "ostream": "cpp",
+        "random": "cpp",
+        "iomanip": "cpp",
+        "fstream": "cpp",
+        "iosfwd": "cpp"
+    }
+}

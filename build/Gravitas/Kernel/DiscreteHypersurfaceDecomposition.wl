@@ -287,6 +287,8 @@ DiscreteHypersurfaceDecomposition[(metricTensor_)[matrixRepresentation_List, coo
       Range[Length[points]]] /; SymbolName[metricTensor] === "MetricTensor" && 
     Length[Dimensions[matrixRepresentation]] == 2 && Length[coordinates] == Length[matrixRepresentation] && 
     BooleanQ[index1] && BooleanQ[index2]
+
+
 DiscreteHypersurfaceDecomposition[(metricTensor_)[matrixRepresentation_List, coordinates_List, index1_, index2_], 
     {timeCoordinate_, initialTime_, finalTime_}, {coordinate1_, initialCoordinate1_, finalCoordinate1_}, 
     {coordinate2_, initialCoordinate2_, finalCoordinate2_}, vertexCount_Integer, discretizationScale_][
@@ -300,45 +302,100 @@ DiscreteHypersurfaceDecomposition[(metricTensor_)[matrixRepresentation_List, coo
      newCoordinate1 = coordinate1 /. (#1 -> ToExpression[#1] & ) /@ Select[coordinates, StringQ]; 
      newCoordinate2 = coordinate2 /. (#1 -> ToExpression[#1] & ) /@ Select[coordinates, StringQ]; 
      flatteningRules = Thread[Complement[newCoordinates, {newTimeCoordinate, newCoordinate1, newCoordinate2}] -> 0]; 
+     Print["Computing christoffel symbols..."];
      christoffelSymbols = Normal[SparseArray[
         (Module[{index = #1}, index -> Total[((1/2)*Inverse[newMatrixRepresentation][[index[[1]],#1]]*
                 (D[newMatrixRepresentation[[#1,index[[3]]]], newCoordinates[[index[[2]]]]] + D[newMatrixRepresentation[[
                    index[[2]],#1]], newCoordinates[[index[[3]]]]] - D[newMatrixRepresentation[[index[[2]],index[[3]]]], 
-                  newCoordinates[[#1]]]) & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ 
-         Tuples[Range[Length[newMatrixRepresentation]], 3]]]; 
+                  newCoordinates[[#1]]]) & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 3]]]; 
+
+     Print["Computing riemann tensor..."];   
      riemannTensor = Normal[SparseArray[(Module[{index = #1}, index -> D[christoffelSymbols[[index[[1]],index[[2]],index[[
                 4]]]], newCoordinates[[index[[3]]]]] - D[christoffelSymbols[[index[[1]],index[[2]],index[[3]]]], 
               newCoordinates[[index[[4]]]]] + Total[(christoffelSymbols[[index[[1]],#1,index[[3]]]]*christoffelSymbols[[
                   #1,index[[2]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]] - 
              Total[(christoffelSymbols[[index[[1]],#1,index[[4]]]]*christoffelSymbols[[#1,index[[2]],index[[3]]]] & ) /@ 
                Range[Length[newMatrixRepresentation]]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+
+     Print["Computing covariant riemann tensor..."];          
      covariantRiemannTensor = Normal[SparseArray[
-        (Module[{index = #1}, index -> Total[(newMatrixRepresentation[[index[[1]],#1]]*riemannTensor[[#1,index[[2]],
-                 index[[3]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ 
-         Tuples[Range[Length[newMatrixRepresentation]], 4]]]; contravariantRiemannTensor = 
-      Normal[SparseArray[(Module[{index = #1}, index -> Total[(Inverse[newMatrixRepresentation][[index[[2]],#1[[1]]]]*
+     (Module[{index = #1}, index -> Total[(newMatrixRepresentation[[index[[1]],#1]]*riemannTensor[[#1,index[[2]],
+                 index[[3]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+         
+     (*contravariantRiemannTensor = Normal[SparseArray[
+     (Module[{index = #1}, index -> Total[(Inverse[newMatrixRepresentation][[index[[2]],#1[[1]]]]*
                 Inverse[newMatrixRepresentation][[#1[[2]],index[[3]]]]*Inverse[newMatrixRepresentation][[#1[[3]],
                  index[[4]]]]*riemannTensor[[index[[1]],#1[[1]],#1[[2]],#1[[3]]]] & ) /@ Tuples[Range[
-                Length[newMatrixRepresentation]], 3]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
-     kretschmannScalar = FullSimplify[Total[(covariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]]*
-            contravariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]] & ) /@ 
-          Tuples[Range[Length[newMatrixRepresentation]], 4]] /. flatteningRules]; 
+                Length[newMatrixRepresentation]], 3]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]];*)
+   (* Print["Computing contravariant riemann tensor"];            
+	invMat = Inverse[newMatrixRepresentation];
+	l = Length[invMat];
+	indices = Tuples[Range[l], 4];
+	DistributeDefinitions[invMat,l,indices,riemannTensor];
+	contravariantRiemannTensor = Normal @ SparseArray[
+	    ParallelMap[
+	        Function[index,
+				  index -> Total[
+				    (invMat[[index[[2]], #1[[1]]]] *
+				     invMat[[#1[[2]], index[[3]]]] *
+				     invMat[[#1[[3]], index[[4]]]] *
+				     riemannTensor[[index[[1]], #1[[1]], #1[[2]], #1[[3]]]]
+				    ) & /@ Tuples[Range[l], 3]
+				  ]
+				],
+	        indices
+	    ]
+	]; *)
+
+      Print["Computing contravariant riemann tensor"];
+      invMat = Inverse[newMatrixRepresentation];
+      l = Length[invMat];
+      Module[{tensorProduct},
+         tensorProduct = TensorProduct[riemannTensor, invMat, invMat, invMat];
+         contravariantRiemannTensor = TensorContract[tensorProduct, {{2, 5}, {3, 7}, {4, 9}}];
+      ]
+
+
+      Print["Computing kretschmann scalar..."];
+      (* kretschmannScalar = FullSimplify[Total[(covariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]]*
+               contravariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]] & ) /@ 
+            Tuples[Range[Length[newMatrixRepresentation]], 4]] /. flatteningRules];  *)
+      DistributeDefinitions[covariantRiemannTensor, contravariantRiemannTensor];
+      n = Length[newMatrixRepresentation];
+      kretschmannScalar =
+      Total @ ParallelMap[
+         Function[index,
+            Simplify[
+            covariantRiemannTensor[[Sequence @@ index]] *
+            contravariantRiemannTensor[[Sequence @@ index]]
+            ]
+         ],
+         Tuples[Range[n], 4]
+      ] /. flatteningRules;
+       Print["Discretizing region..."];
      regions = (DiscretizeRegion[ImplicitRegion[-(kretschmannScalar /. {newCoordinate1 -> Sqrt[\[FormalX]^2 + \[FormalY]^2], 
                newCoordinate2 -> ArcTan[\[FormalY]/\[FormalX]]} /. newTimeCoordinate -> #1) == \[FormalL], {\[FormalX], \[FormalY], \[FormalL]}], 
          {{-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]}, 
           {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]}, 
           {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], 
             Abs[finalCoordinate1]]}}] & ) /@ Range[initialTime, finalTime, (finalTime - initialTime)/stepCount]; 
-     points = (RandomPoint[#1, vertexCount] & ) /@ regions; curvatureRanges = (Max[Last /@ #1] - Min[Last /@ #1] & ) /@ 
-       points; edgeLists = (Module[{point = #1}, Apply[UndirectedEdge, Select[Tuples[point, 2], 
-           Norm[First[#1] - Last[#1]] < discretizationScale && First[#1] =!= Last[#1] & ], {1}]] & ) /@ points; 
-     (Module[{index = #1}, SimpleGraph[Graph[points[[index]], edgeLists[[index]], 
+      Print["Generating points..."];
+      points = ParallelMap[(RandomPoint[#1, vertexCount] & ),  regions]; 
+      print["Computing curvature ranges..."];
+      curvatureRanges = ParallelMap[(Max[Last /@ #1] - Min[Last /@ #1] & ), points]; 
+      print["Computing edge lists..."];
+      edgeLists = ParallelMap[(Module[{point = #1}, Apply[UndirectedEdge, Select[Tuples[point, 2], Norm[First[#1] - Last[#1]] < discretizationScale && First[#1] =!= Last[#1] & ], {1}]] & ), points]; 
+      print["Generating graphs ..."];
+      (Module[{index = #1}, SimpleGraph[Graph[points[[index]], edgeLists[[index]], 
           VertexStyle -> (#1 -> ColorData["LightTemperatureMap", -(Last[#1]/curvatureRanges[[index]])] & ) /@ 
             points[[index]], EdgeStyle -> (#1 -> ColorData["LightTemperatureMap", -(Last[Last[#1]]/curvatureRanges[[
                   index]])] & ) /@ edgeLists[[index]], VertexCoordinates -> (#1 -> #1 & ) /@ points[[index]]]]] & ) /@ 
       Range[Length[points]]] /; SymbolName[metricTensor] === "MetricTensor" && 
     Length[Dimensions[matrixRepresentation]] == 2 && Length[coordinates] == Length[matrixRepresentation] && 
     BooleanQ[index1] && BooleanQ[index2]
+
+
+
 DiscreteHypersurfaceDecomposition[(metricTensor_)[matrixRepresentation_List, coordinates_List, index1_, index2_], 
     {timeCoordinate_, initialTime_, finalTime_}, {coordinate1_, initialCoordinate1_, finalCoordinate1_}, 
     {coordinate2_, initialCoordinate2_, finalCoordinate2_}, vertexCount_Integer, discretizationScale_][
@@ -402,36 +459,124 @@ DiscreteHypersurfaceDecomposition[(metricTensor_)[matrixRepresentation_List, coo
      newCoordinate1 = coordinate1 /. (#1 -> ToExpression[#1] & ) /@ Select[coordinates, StringQ]; 
      newCoordinate2 = coordinate2 /. (#1 -> ToExpression[#1] & ) /@ Select[coordinates, StringQ]; 
      flatteningRules = Thread[Complement[newCoordinates, {newTimeCoordinate, newCoordinate1, newCoordinate2}] -> 0]; 
+     Print["Computing christoffel symbols..."];
      christoffelSymbols = Normal[SparseArray[
         (Module[{index = #1}, index -> Total[((1/2)*Inverse[newMatrixRepresentation][[index[[1]],#1]]*
                 (D[newMatrixRepresentation[[#1,index[[3]]]], newCoordinates[[index[[2]]]]] + D[newMatrixRepresentation[[
                    index[[2]],#1]], newCoordinates[[index[[3]]]]] - D[newMatrixRepresentation[[index[[2]],index[[3]]]], 
-                  newCoordinates[[#1]]]) & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ 
-         Tuples[Range[Length[newMatrixRepresentation]], 3]]]; 
+                  newCoordinates[[#1]]]) & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 3]]]; 
+
+     Print["Computing riemann tensor..."];   
      riemannTensor = Normal[SparseArray[(Module[{index = #1}, index -> D[christoffelSymbols[[index[[1]],index[[2]],index[[
                 4]]]], newCoordinates[[index[[3]]]]] - D[christoffelSymbols[[index[[1]],index[[2]],index[[3]]]], 
               newCoordinates[[index[[4]]]]] + Total[(christoffelSymbols[[index[[1]],#1,index[[3]]]]*christoffelSymbols[[
                   #1,index[[2]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]] - 
              Total[(christoffelSymbols[[index[[1]],#1,index[[4]]]]*christoffelSymbols[[#1,index[[2]],index[[3]]]] & ) /@ 
                Range[Length[newMatrixRepresentation]]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+
+     Print["Computing covariant riemann tensor..."];          
      covariantRiemannTensor = Normal[SparseArray[
-        (Module[{index = #1}, index -> Total[(newMatrixRepresentation[[index[[1]],#1]]*riemannTensor[[#1,index[[2]],
+     (Module[{index = #1}, index -> Total[(newMatrixRepresentation[[index[[1]],#1]]*riemannTensor[[#1,index[[2]],
                  index[[3]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ 
-         Tuples[Range[Length[newMatrixRepresentation]], 4]]]; contravariantRiemannTensor = 
-      Normal[SparseArray[(Module[{index = #1}, index -> Total[(Inverse[newMatrixRepresentation][[index[[2]],#1[[1]]]]*
+         Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+         
+
+      (* ORIGINAL    *)
+     (* contravariantRiemannTensor = Normal[SparseArray[
+     (Module[{index = #1}, index -> Total[(Inverse[newMatrixRepresentation][[index[[2]],#1[[1]]]]*
                 Inverse[newMatrixRepresentation][[#1[[2]],index[[3]]]]*Inverse[newMatrixRepresentation][[#1[[3]],
                  index[[4]]]]*riemannTensor[[index[[1]],#1[[1]],#1[[2]],#1[[3]]]] & ) /@ Tuples[Range[
-                Length[newMatrixRepresentation]], 3]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
-     kretschmannScalar = FullSimplify[Total[(covariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]]*
-            contravariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]] & ) /@ 
-          Tuples[Range[Length[newMatrixRepresentation]], 4]] /. flatteningRules]; 
-     regions = (DiscretizeRegion[ImplicitRegion[-(kretschmannScalar /. {newCoordinate1 -> Sqrt[\[FormalX]^2 + \[FormalY]^2], 
-               newCoordinate2 -> ArcTan[\[FormalY]/\[FormalX]]} /. newTimeCoordinate -> #1) == \[FormalL], {\[FormalX], \[FormalY], \[FormalL]}], 
-         {{-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]}, 
-          {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]}, 
-          {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], 
-            Abs[finalCoordinate1]]}}] & ) /@ Range[initialTime, finalTime, (finalTime - initialTime)/stepCount]; 
-     points = (RandomPoint[#1, vertexCount] & ) /@ regions; curvatureRanges = (Max[Last /@ #1] - Min[Last /@ #1] & ) /@ 
+                Length[newMatrixRepresentation]], 3]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; *)
+
+
+      (* Print["Computing contravariant riemann tensor"];            
+      invMat = Inverse[newMatrixRepresentation];
+      l = Length[invMat];
+      indices = Tuples[Range[l], 4];
+      DistributeDefinitions[invMat,l,indices,riemannTensor];
+      contravariantRiemannTensor = Normal @ SparseArray[
+         ParallelMap[
+            Function[index,
+               index -> Total[
+                  (invMat[[index[[2]], #1[[1]]]] *
+                  invMat[[#1[[2]], index[[3]]]] *
+                  invMat[[#1[[3]], index[[4]]]] *
+                  riemannTensor[[index[[1]], #1[[1]], #1[[2]], #1[[3]]]]
+                  ) & /@ Tuples[Range[l], 3]
+               ]
+               ],
+            indices
+         ]
+      ]; *)
+
+      Print["Computing contravariant riemann tensor"];
+      invMat = Inverse[newMatrixRepresentation];
+      l = Length[invMat];
+      Module[{tensorProduct},
+         tensorProduct = TensorProduct[riemannTensor, invMat, invMat, invMat];
+         contravariantRiemannTensor = TensorContract[tensorProduct, {{2, 5}, {3, 7}, {4, 9}}];
+      ]
+
+      Print["Computing kretschmann scalar..."];
+      (* kretschmannScalar = FullSimplify[Total[(covariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]]*
+               contravariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]] & ) /@ 
+            Tuples[Range[Length[newMatrixRepresentation]], 4]] /. flatteningRules];  *)
+      DistributeDefinitions[covariantRiemannTensor, contravariantRiemannTensor];
+      n = Length[newMatrixRepresentation];
+      kretschmannScalar =
+      Total @ ParallelMap[
+         Function[index,
+            Simplify[
+            covariantRiemannTensor[[Sequence @@ index]] *
+            contravariantRiemannTensor[[Sequence @@ index]]
+            ]
+         ],
+         Tuples[Range[n], 4]
+      ] /. flatteningRules;
+      
+      Print["Generating region..."];           
+      regions = (DiscretizeRegion[ImplicitRegion[-(kretschmannScalar /. {newCoordinate1 -> Sqrt[\[FormalX]^2 + \[FormalY]^2], 
+                  newCoordinate2 -> ArcTan[\[FormalY]/\[FormalX]]} /. newTimeCoordinate -> #1) == \[FormalL], {\[FormalX], \[FormalY], \[FormalL]}], 
+            {{-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]}, 
+            {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]}, 
+            {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], 
+               Abs[finalCoordinate1]]}}] & ) /@ Range[initialTime, finalTime, (finalTime - initialTime)/stepCount]; 
+      (* DistributeDefinitions[
+         kretschmannScalar, newCoordinate1, newCoordinate2, newTimeCoordinate, 
+         initialCoordinate1, finalCoordinate1, initialTime, finalTime, stepCount
+      ];
+      regions = ParallelMap[
+         Function[tm,
+            DiscretizeRegion[
+               ImplicitRegion[
+               -(kretschmannScalar /. {
+                  newCoordinate1 -> Sqrt[\[FormalX]^2 + \[FormalY]^2],
+                  newCoordinate2 -> ArcTan[\[FormalY]/\[FormalX]]
+               } /. newTimeCoordinate -> tm) == \[FormalL],
+               {\[FormalX], \[FormalY], \[FormalL]}
+               ],
+               {
+               {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]},
+               {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]},
+               {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1]]}
+               }
+            ]
+         ],
+         Range[initialTime, finalTime, (finalTime - initialTime)/stepCount],
+         ProgressReporting -> True
+         ]; *)
+      Print["Discretizing..."];
+
+   points = ParallelMap[RandomPoint[#1, vertexCount] &, regions]; 
+   curvatureRanges = ParallelMap[(Max[Last /@ #] - Min[Last /@ #]) &, points];
+   edgeLists = ParallelMap[(Module[{point = #1}, Apply[UndirectedEdge, Select[Tuples[point, 2], Norm[First[#1] - Last[#1]] < discretizationScale && First[#1] =!= Last[#1] & ], {1}]] & ) , points]; 
+   
+   (Module[{index = #1}, 
+      SimpleGraph[Graph[points[[index]], edgeLists[[index]], VertexStyle -> (#1 -> ColorData["LightTemperatureMap", -(Last[#1]/curvatureRanges[[index]])] & ) /@ points[[index]], EdgeStyle -> (#1 -> ColorData["LightTemperatureMap", -(Last[Last[#1]]/curvatureRanges[[index]])] & ) /@ edgeLists[[index]]]]] & ) /@ Range[Length[points]]
+      ] /; 
+   SymbolName[metricTensor] === "MetricTensor" && Length[Dimensions[matrixRepresentation]] == 2 && Length[coordinates] == Length[matrixRepresentation] && BooleanQ[index1] && BooleanQ[index2]         
+     (* points = (RandomPoint[#1, vertexCount] & ) /@ regions; 
+     curvatureRanges = (Max[Last /@ #1] - Min[Last /@ #1] & ) /@ 
        points; edgeLists = (Module[{point = #1}, Apply[UndirectedEdge, Select[Tuples[point, 2], 
            Norm[First[#1] - Last[#1]] < discretizationScale && First[#1] =!= Last[#1] & ], {1}]] & ) /@ points; 
      (Module[{index = #1}, SimpleGraph[Graph[points[[index]], edgeLists[[index]], 
@@ -439,7 +584,10 @@ DiscreteHypersurfaceDecomposition[(metricTensor_)[matrixRepresentation_List, coo
             points[[index]], EdgeStyle -> (#1 -> ColorData["LightTemperatureMap", -(Last[Last[#1]]/curvatureRanges[[
                   index]])] & ) /@ edgeLists[[index]]]]] & ) /@ Range[Length[points]]] /; 
    SymbolName[metricTensor] === "MetricTensor" && Length[Dimensions[matrixRepresentation]] == 2 && 
-    Length[coordinates] == Length[matrixRepresentation] && BooleanQ[index1] && BooleanQ[index2]
+    Length[coordinates] == Length[matrixRepresentation] && BooleanQ[index1] && BooleanQ[index2] *)
+
+
+
 DiscreteHypersurfaceDecomposition[(metricTensor_)[matrixRepresentation_List, coordinates_List, index1_, index2_], 
     {timeCoordinate_, initialTime_, finalTime_}, {coordinate1_, initialCoordinate1_, finalCoordinate1_}, 
     {coordinate2_, initialCoordinate2_, finalCoordinate2_}, vertexCount_Integer, discretizationScale_][
@@ -881,37 +1029,70 @@ DiscreteHypersurfaceDecomposition[(metricTensor_)[matrixRepresentation_List, coo
      newTimeCoordinate = timeCoordinate /. (#1 -> ToExpression[#1] & ) /@ Select[coordinates, StringQ]; 
      newCoordinate1 = coordinate1 /. (#1 -> ToExpression[#1] & ) /@ Select[coordinates, StringQ]; 
      newCoordinate2 = coordinate2 /. (#1 -> ToExpression[#1] & ) /@ Select[coordinates, StringQ]; 
-     flatteningRules = Thread[Complement[newCoordinates, {newTimeCoordinate, newCoordinate1, newCoordinate2}] -> 0]; 
+     flatteningRules = Thread[Complement[newCoordinates, {newTimeCoordinate, newCoordinate1, newCoordinate2}] -> 0];
+
      christoffelSymbols = Normal[SparseArray[
         (Module[{index = #1}, index -> Total[((1/2)*Inverse[newMatrixRepresentation][[index[[1]],#1]]*
                 (D[newMatrixRepresentation[[#1,index[[3]]]], newCoordinates[[index[[2]]]]] + D[newMatrixRepresentation[[
                    index[[2]],#1]], newCoordinates[[index[[3]]]]] - D[newMatrixRepresentation[[index[[2]],index[[3]]]], 
                   newCoordinates[[#1]]]) & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ 
          Tuples[Range[Length[newMatrixRepresentation]], 3]]]; 
+
+     (* riemannTensor = Normal[SparseArray[(Module[{index = #1}, index -> D[christoffelSymbols[[index[[1]],index[[2]],index[[
+                4]]]], newCoordinates[[index[[3]]]]] - D[christoffelSymbols[[index[[1]],index[[2]],index[[3]]]], 
+              newCoordinates[[index[[4]]]]] + Total[(christoffelSymbols[[index[[1]],#1,index[[3]]]]*christoffelSymbols[[
+                  #1,index[[2]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]] - 
+             Total[(christoffelSymbols[[index[[1]],#1,index[[4]]]]*christoffelSymbols[[#1,index[[2]],index[[3]]]] & ) /@ 
+               Range[Length[newMatrixRepresentation]]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+
+     covariantRiemannTensor = Normal[SparseArray[
+        (Module[{index = #1}, index -> Total[(newMatrixRepresentation[[index[[1]],#1]]*riemannTensor[[#1,index[[2]],
+                 index[[3]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ 
+         Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+         
+         contravariantRiemannTensor = Normal[SparseArray[(Module[{index = #1}, index -> Total[(Inverse[newMatrixRepresentation][[index[[2]],#1[[1]]]]*
+                Inverse[newMatrixRepresentation][[#1[[2]],index[[3]]]]*Inverse[newMatrixRepresentation][[#1[[3]],
+                 index[[4]]]]*riemannTensor[[index[[1]],#1[[1]],#1[[2]],#1[[3]]]] & ) /@ Tuples[Range[
+                Length[newMatrixRepresentation]], 3]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]];  *)
+
+
+     Print["Computing riemann tensor..."];   
      riemannTensor = Normal[SparseArray[(Module[{index = #1}, index -> D[christoffelSymbols[[index[[1]],index[[2]],index[[
                 4]]]], newCoordinates[[index[[3]]]]] - D[christoffelSymbols[[index[[1]],index[[2]],index[[3]]]], 
               newCoordinates[[index[[4]]]]] + Total[(christoffelSymbols[[index[[1]],#1,index[[3]]]]*christoffelSymbols[[
                   #1,index[[2]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]] - 
              Total[(christoffelSymbols[[index[[1]],#1,index[[4]]]]*christoffelSymbols[[#1,index[[2]],index[[3]]]] & ) /@ 
                Range[Length[newMatrixRepresentation]]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+
+     Print["Computing covariant riemann tensor..."];          
      covariantRiemannTensor = Normal[SparseArray[
-        (Module[{index = #1}, index -> Total[(newMatrixRepresentation[[index[[1]],#1]]*riemannTensor[[#1,index[[2]],
+     (Module[{index = #1}, index -> Total[(newMatrixRepresentation[[index[[1]],#1]]*riemannTensor[[#1,index[[2]],
                  index[[3]],index[[4]]]] & ) /@ Range[Length[newMatrixRepresentation]]]] & ) /@ 
-         Tuples[Range[Length[newMatrixRepresentation]], 4]]]; contravariantRiemannTensor = 
-      Normal[SparseArray[(Module[{index = #1}, index -> Total[(Inverse[newMatrixRepresentation][[index[[2]],#1[[1]]]]*
-                Inverse[newMatrixRepresentation][[#1[[2]],index[[3]]]]*Inverse[newMatrixRepresentation][[#1[[3]],
-                 index[[4]]]]*riemannTensor[[index[[1]],#1[[1]],#1[[2]],#1[[3]]]] & ) /@ Tuples[Range[
-                Length[newMatrixRepresentation]], 3]]] & ) /@ Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+         Tuples[Range[Length[newMatrixRepresentation]], 4]]]; 
+         
+
+      Print["Computing contravariant riemann tensor"];
+      invMat = Inverse[newMatrixRepresentation];
+      l = Length[invMat];
+      Module[{tensorProduct},
+         tensorProduct = TensorProduct[riemannTensor, invMat, invMat, invMat];
+         contravariantRiemannTensor = TensorContract[tensorProduct, {{2, 5}, {3, 7}, {4, 9}}];
+      ]
+
      kretschmannScalar = FullSimplify[Total[(covariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]]*
             contravariantRiemannTensor[[#1[[1]],#1[[2]],#1[[3]],#1[[4]]]] & ) /@ 
           Tuples[Range[Length[newMatrixRepresentation]], 4]] /. flatteningRules]; 
+
+
      regions = (DiscretizeRegion[ImplicitRegion[-(kretschmannScalar /. {newCoordinate1 -> \[FormalX], newCoordinate2 -> \[FormalY]} /. 
              newTimeCoordinate -> #1) == \[FormalL], {\[FormalX], \[FormalY], \[FormalL]}], {{initialCoordinate1, finalCoordinate1}, 
           {initialCoordinate2, finalCoordinate2}, {-Max[Abs[initialCoordinate1], Abs[finalCoordinate1], 
              Abs[initialCoordinate2], Abs[finalCoordinate2]], Max[Abs[initialCoordinate1], Abs[finalCoordinate1], 
             Abs[initialCoordinate2], Abs[finalCoordinate2]]}}] & ) /@ Range[initialTime, finalTime, 
         (finalTime - initialTime)/stepCount]; points = (RandomPoint[#1, vertexCount] & ) /@ regions; 
+
      curvatureRanges = (Max[Last /@ #1] - Min[Last /@ #1] & ) /@ points; 
+
      edgeLists = (Module[{point = #1}, Apply[UndirectedEdge, Select[Tuples[point, 2], 
            Norm[First[#1] - Last[#1]] < discretizationScale && First[#1] =!= Last[#1] & ], {1}]] & ) /@ points; 
      (Module[{index = #1}, SimpleGraph[Graph[points[[index]], edgeLists[[index]], 
