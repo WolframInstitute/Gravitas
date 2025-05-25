@@ -7,13 +7,17 @@ PackageExport[MetricTensor]
 
 (* Validation *)
 
-metricTensorQ[MetricTensor[m_ ? SquareMatrixQ, coordinates_ ? VectorQ, {_ ? BooleanQ, _ ? BooleanQ}]] :=
-    Length[m] == Length[coordinates]
+metricTensorQ[MetricTensor[m_ , coordinates_, {i_, j_}]] := Quiet[
+    VectorQ[coordinates] &&
+    SquareMatrixQ[m] && 
+    Length[m] == Length[coordinates] &&
+    BooleanQ[i] && BooleanQ[j]
+]
 
 metricTensorQ[___] := False
 
 
-MetricTensorQ[m_MetricTensor] := System`Private`HoldValidQ[m] || metricTensorQ[Unevaluated[m]]
+MetricTensorQ[mt_MetricTensor] := System`Private`HoldValidQ[m] || metricTensorQ[Unevaluated[mt]]
 
 MetricTensorQ[___] := False
 
@@ -129,12 +133,12 @@ MetricTensor["Schwarzschild"[M_ : M], {t_ : t, r_ : r, theta_ : theta, phi_ : ph
 
 (* IsotropicSchwarzschild *)
 
-MetricTensor["IsotropicSchwarzschild"[M_ : M], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := With[{
-    f = (1 - M / (2 * r)) / (1 + m / (2 * r))
+MetricTensor["IsotropicSchwarzschild"[M_ : M], {t_ : t, x_ : x, y_ : y, z_ : z}, args___] := With[{
+    r = Sqrt[x ^ 2 + y ^ 2 + z ^ 2]
 },
     MetricTensor[
-        DiagonalMatrix[{- f ^ 2, (1 + M / (2 * r)) ^ 4, r ^ 2, r ^ 2 * Sin[theta] ^ 2}],
-        {t, r, theta, phi},
+        DiagonalMatrix[Prepend[ - (1 - M / 2 / r) ^ 2 / (1 + M / 2 / r) ^ 2] @ ConstantArray[(1 + M / 2 / r) ^ 4, 3]],
+        {t, x, y, z},
         args
     ]
 ]
@@ -145,8 +149,8 @@ MetricTensor["IsotropicSchwarzschild"[M_ : M], {t_ : t, r_ : r, theta_ : theta, 
 MetricTensor["EddingtonFinkelstein"[M_ : M], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := 
     MetricTensor[
         {
-            {- (1 - (2 * M) / r), 1, 0, 0},
-            {1, 0, 0, 0},
+            {- (1 - (2 * M) / r), \[PlusMinus]1, 0, 0},
+            {\[PlusMinus]1, 0, 0, 0},
             {0, 0, r ^ 2, 0},
             {0, 0, 0, r ^ 2 * Sin[theta] ^ 2}
         },
@@ -155,9 +159,54 @@ MetricTensor["EddingtonFinkelstein"[M_ : M], {t_ : t, r_ : r, theta_ : theta, ph
     ]
 
 
+(* IngoingEddingtonFinkelstein *)
+
+MetricTensor["IngoingEddingtonFinkelstein"[M_ : M], {v_ : v, r_ : r, theta_ : theta, phi_ : phi}, args___] := 
+    MetricTensor[
+        {
+            {- (1 - (2 * M) / r), 1, 0, 0},
+            {1, 0, 0, 0},
+            {0, 0, r ^ 2, 0},
+            {0, 0, 0, r ^ 2 * Sin[theta] ^ 2}
+        },
+        {v, r, theta, phi},
+        args
+    ]
+
+
+(* OutgoingEddingtonFinkelstein *)
+
+MetricTensor["OutgoingEddingtonFinkelstein"[M_ : M], {u_ : u, r_ : r, theta_ : theta, phi_ : phi}, args___] := 
+    MetricTensor[
+        {
+            {- (1 - (2 * M) / r), -1, 0, 0},
+            {-1, 0, 0, 0},
+            {0, 0, r ^ 2, 0},
+            {0, 0, 0, r ^ 2 * Sin[theta] ^ 2}
+        },
+        {u, r, theta, phi},
+        args
+    ]
+
+
 (* GullstrandPainleve *)
 
 MetricTensor["GullstrandPainleve"[M_ : M], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := 
+    MetricTensor[
+        {
+            {- (1 - (2 * M) / r), \[PlusMinus]Sqrt[2 * M / r], 0, 0},
+            {\[PlusMinus]Sqrt[2 * M / r], 1, 0, 0},
+            {0, 0, r ^ 2, 0},
+            {0, 0, 0, r ^ 2 * Sin[theta] ^ 2}
+        },
+        {t, r, theta, phi},
+        args
+    ]
+
+
+(* IngoingGullstrandPainleve *)
+
+MetricTensor["IngoingGullstrandPainleve"[M_ : M], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := 
     MetricTensor[
         {
             {- (1 - (2 * M) / r), Sqrt[2 * M / r], 0, 0},
@@ -169,18 +218,32 @@ MetricTensor["GullstrandPainleve"[M_ : M], {t_ : t, r_ : r, theta_ : theta, phi_
         args
     ]
 
+(* OutgoingGullstrandPainleve *)
+
+MetricTensor["OutgoingGullstrandPainleve"[M_ : M], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := 
+    MetricTensor[
+        {
+            {- (1 - (2 * M) / r), - Sqrt[2 * M / r], 0, 0},
+            {- Sqrt[2 * M / r], 1, 0, 0},
+            {0, 0, r ^ 2, 0},
+            {0, 0, 0, r ^ 2 * Sin[theta] ^ 2}
+        },
+        {t, r, theta, phi},
+        args
+    ]
+
 
 (* KruskalSzekeres *)
 
 MetricTensor["KruskalSzekeres"[M_ : M], {T_ : T, X_ : X, theta_ : theta, phi_ : phi}, args___] := With[{
-    r = 2 * M / (1 - u * v)
+    r = 1 + ProductLog[(X ^ 2 - T ^ 2) / E] 
 },
     MetricTensor[
         {
-            {- (32 * M ^ 3 * Exp[-r / (2 * M)]) / r, 0, 0, 0},
-            {0, (32 * M ^ 3 * Exp[-r / (2 * M)]) / r, 0, 0},
-            {0, 0, r ^ 2, 0},
-            {0, 0, 0, r ^ 2 * Sin[theta] ^ 2}
+            {- (16 * M ^ 2 * Exp[- r]) / r, 0, 0, 0},
+            {0, (16 * M ^ 2 * Exp[-r]) / r, 0, 0},
+            {0, 0, 4 M ^ 2 r ^ 2, 0},
+            {0, 0, 0, 4 M ^ 2 r ^ 2 * Sin[theta] ^ 2}
         },
         {T, X, theta, phi},
         args
@@ -191,15 +254,34 @@ MetricTensor["KruskalSzekeres"[M_ : M], {T_ : T, X_ : X, theta_ : theta, phi_ : 
 (* Kerr *)
 
 MetricTensor["Kerr"[M_ : M, J_ : J], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := With[{
-    rho = r ^ 2 + (J * Cos[theta]) ^ 2, delta = r ^ 2 - (2 * M * r) + J ^ 2
+    rho = r ^ 2 + (J * Cos[theta]) ^ 2 / M ^ 2, delta = r ^ 2 - (2 * M * r) + J ^ 2 / M ^ 2
 },
     MetricTensor[
         {
-            {- 1 + (2 * M * r) / rho, 0, 0, - (2 * M * r * J * Sin[theta] ^ 2) / rho},
+            {- 1 + (2 * M * r) / rho, 0, 0, - (2 * r * J * Sin[theta] ^ 2) / rho},
             {0, rho / delta, 0, 0},
             {0, 0, rho, 0},
-            {- (2 * M * r * J * Sin[theta] ^ 2) / rho, 0, 0, 
-                (r ^ 2 + J ^ 2 + (2 * M * r * J ^ 2 * Sin[theta] ^ 2) / rho) * Sin[theta] ^ 2}
+            {- (2 * r * J * Sin[theta] ^ 2) / rho, 0, 0, 
+                (r ^ 2 + J ^ 2 / M ^ 2 + (2 * r * J ^ 2 * Sin[theta] ^ 2) / rho / M) * Sin[theta] ^ 2}
+        },
+        {t, r, theta, phi},
+        args
+    ]
+]
+
+(* KerrNewman *)
+
+MetricTensor["KerrNewman"[M_ : M, Q_ : Q, J_ : J], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := With[{
+    rho = r ^ 2 + J ^ 2 / M ^ 2,
+    rhoCos = r ^ 2 + (J * Cos[theta]) ^ 2 / M ^ 2,
+    delta = r ^ 2 - (2 * M * r) + J ^ 2 / M ^ 2 + Q ^ 2 / (4 Pi)
+},
+    MetricTensor[
+        {
+            {(- delta + (J * Sin[theta]) ^ 2 / M ^ 2) / rhoCos, 0, 0, J / M (delta - rho) Sin[theta] ^ 2 / rhoCos},
+            {0, rhoCos / delta, 0, 0},
+            {0, 0, rhoCos, 0},
+            {J / M (delta - rho) Sin[theta] ^ 2 / rhoCos, 0, 0, (rho ^ 2 - J ^ 2 / M ^ 2 delta Sin[theta] ^ 2) Sin[theta] ^ 2 / rhoCos}
         },
         {t, r, theta, phi},
         args
@@ -209,30 +291,11 @@ MetricTensor["Kerr"[M_ : M, J_ : J], {t_ : t, r_ : r, theta_ : theta, phi_ : phi
 
 (* ReissnerNordstrom *)
 
-MetricTensor["ReissnerNordstrom"[m_ : m, q_ : q], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := With[{
-    f = 1 - (2 * m) / r + (q ^ 2) / (r ^ 2)
+MetricTensor["ReissnerNordstrom"[M_ : M, Q_ : Q], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := With[{
+    f = 1 - (2 * M) / r + (Q ^ 2) / (4 Pi r ^ 2)
 },
     MetricTensor[
         DiagonalMatrix[{- f, 1 / f, r ^ 2, r ^ 2 * Sin[theta] ^ 2}],
-        {t, r, theta, phi},
-        args
-    ]
-]
-
-
-(* KerrNewman *)
-
-MetricTensor["KerrNewman"[m_ : m, q_ : q, j_ : j], {t_ : t, r_ : r, theta_ : theta, phi_ : phi}, args___] := With[{
-    rho = r ^ 2 + (j * Cos[theta]) ^ 2, delta = r ^ 2 - (2 * m * r) + j ^ 2 - (q ^ 2)
-},
-    MetricTensor[
-        {
-            {- 1 + (2 * m * r) / rho, 0, 0, - (2 * m * r * j * Sin[theta] ^ 2) / rho},
-            {0, rho / delta, 0, 0},
-            {0, 0, rho, 0},
-            {- (2 * m * r * j * Sin[theta] ^ 2) / rho, 0, 0, 
-                (r ^ 2 + j ^ 2 + (2 * m * r * j ^ 2 * Sin[theta] ^ 2) / rho) * Sin[theta] ^ 2}
-        },
         {t, r, theta, phi},
         args
     ]
@@ -244,10 +307,10 @@ MetricTensor["KerrNewman"[m_ : m, q_ : q, j_ : j], {t_ : t, r_ : r, theta_ : the
 MetricTensor["Godel"[omega_ : omega], {t_ : t, x_ : x, y_ : y, z_ : z}, args___] := 
     MetricTensor[
         {
-            {- 1, Exp[2 * sqrt2 * omega * x] / 2, 0, 0},
-            {Exp[2 * sqrt2 * omega * x] / 2, 1, 0, 0},
-            {0, 0, 1, 0},
-            {0, 0, 0, 1}
+            {- 1 / 2 / omega ^ 2, 0, - Exp[x] / 2 / omega ^ 2, 0},
+            {0, 1 / 2 / omega ^ 2, 0, 0},
+            {- Exp[x] / 2 / omega ^ 2, 0, - Exp[2 x] / 4 / omega ^ 2, 0},
+            {0, 0, 0, 1 / 2 / omega ^ 2}
         },
         {t, x, y, z},
         args
