@@ -1,7 +1,7 @@
 
 PacletObject[<|
     "Name" -> "Gravitas",
-    "Description" -> "General Relativity in the Wolfram Physics Project",
+    "Description" -> "Symbolic and numeric General Relativity",
     "Creator" -> "Jonathan Gorard",
     "URL" -> "https://github.com/WolframInstitute/Gravitas",
     "PublisherID" -> "WolframInstitute",

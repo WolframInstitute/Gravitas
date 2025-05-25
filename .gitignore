@@ -6,3 +6,5 @@ Gravitas/build/
 .direnv/
 .vscode/
 .envrc
+
+.DS_Store
