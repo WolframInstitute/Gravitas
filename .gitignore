@@ -1,0 +1,8 @@
+
+*.paclet
+build/
+Gravitas/build/
+
+.direnv/
+.vscode/
+.envrc
