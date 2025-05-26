@@ -1,23 +1,24 @@
 Package["WolframInstitute`Gravitas`"]
 
+PackageImport["WolframInstitute`Gravitas`ShapedTensor`"]
+
 PackageExport[MetricTensorQ]
 PackageExport[MetricTensor]
 
 
+ClearAll[MetricTensor]
+ClearAll[Prop]
 
 (* Validation *)
 
-metricTensorQ[MetricTensor[m_ , coordinates_, {i_, j_}]] := Quiet[
-    VectorQ[coordinates] &&
-    SquareMatrixQ[m] && 
-    Length[m] == Length[coordinates] &&
-    BooleanQ[i] && BooleanQ[j]
-]
+metricTensorQ[MetricTensor[st_ShapedTensor]] :=
+    ShapedTensorQ[st] &&
+    MatchQ[st["Dimensions"], {n_, n_}]
 
 metricTensorQ[___] := False
 
 
-MetricTensorQ[mt_MetricTensor] := System`Private`HoldValidQ[m] || metricTensorQ[Unevaluated[mt]]
+MetricTensorQ[mt_MetricTensor] := System`Private`HoldValidQ[mt] || metricTensorQ[Unevaluated[mt]]
 
 MetricTensorQ[___] := False
 
@@ -330,6 +331,17 @@ MetricTensor["FLRW"[k_ : k, a_ : a], {t_ : t, r_ : r, theta_ : theta, phi_ : phi
 ]
 
 
+(* Mutation *)
+
+MetricTensor[mt_MetricTensor, coordinates_List] := MetricTensor[mt["Matrix"], padCoordiantes[coordinates, mt["Dimension"]], mt["Indices"]]
+
+MetricTensor[mt_MetricTensor, i_ ? BooleanQ] := MetricTensor[mt["Matrix"], mt["Coordinates"], i, mt["Indices"][[2]]]
+
+MetricTensor[mt_MetricTensor, i_ ? BooleanQ, j_ ? BooleanQ] := MetricTensor[mt["Matrix"], mt["Coordinates"], i, j]
+
+MetricTensor[mt_MetricTensor] := mt
+
+
 (* General constructors *)
 
 MetricTensor[name_String, args___] := MetricTensor[name[], args]
@@ -343,20 +355,14 @@ MetricTensor[matrix_ ? SquareMatrixQ] := MetricTensor[matrix, Superscript[x, #] 
 MetricTensor[vector_ ? VectorQ] := MetricTensor[DiagonalMatrix[vector]]
 
 
-m : MetricTensor[matrix_, coordinates_, i : _ ? BooleanQ : True, j : _ ? BooleanQ : True] := 
-    MetricTensor[matrix, coordinates, {i, j}]
+MetricTensor[matrix_, coordinates_, i : _ ? BooleanQ : True, j : _ ? BooleanQ : True] := With[{
+    st = ShapedTensor[matrix, {i, j}]
+},
+    MetricTensor[ShapedTensor[st, Shape @@ MapThread[Dimension[#1, #2, coordinates] &, {st["Indices"], {mu, nu}}], coordinates, "g"]]
+]
 
 m_MetricTensor /; System`Private`HoldNotValidQ[m] && metricTensorQ[Unevaluated[m]] :=
     System`Private`SetNoEntry[System`Private`HoldSetValid[m]]
-
-
-(* Mutation *)
-
-MetricTensor[mt_MetricTensor, coordinates_List] := MetricTensor[mt["Matrix"], padCoordiantes[coordinates, mt["Dimension"]], mt["Indices"]]
-
-MetricTensor[mt_MetricTensor, i_ ? BooleanQ] := MetricTensor[mt["Matrix"], mt["Coordinates"], i, mt["Indices"][[2]]]
-
-MetricTensor[mt_MetricTensor, i_ ? BooleanQ, j_ ? BooleanQ] := MetricTensor[mt["Matrix"], mt["Coordinates"], i, j]
 
 
 (* Properties *)
@@ -373,15 +379,19 @@ MetricTensor["Properties"] = {
     "LengthPureFunction", "AnglePureFunction", "Properties"
 }
 
-
-Prop[MetricTensor[m_, _, _] ? MetricTensorQ, "Matrix" | "Tensor"] := m
-
-Prop[MetricTensor[_, coordinates_, _] ? MetricTensorQ, "Variables" | "Coordinates"] := coordinates
-
-Prop[MetricTensor[_, _, indices_] ? MetricTensorQ, "Indices"] := indices
-
-
 Prop[_, "Properties"] := MetricTensor["Properties"]
+
+Prop[MetricTensor[st_] ? MetricTensorQ, "ShapedTensor"] := st
+
+
+Prop[mt_, "Matrix"] := mt["Tensor"]
+
+Prop[mt_, "Variables" | "Coordinates"] := mt["Parameters"]
+
+Prop[mt_, "Indices"] := mt["Variance"]
+
+
+Prop[mt_, prop_String /; StringStartsQ[prop, "Reduced"]] := FullSimplify[mt[StringDelete[prop, "Reduced"]]]
 
 Prop[mt_, "Dimension" | "Dimensions"] := Length[mt["Coordinates"]]
 
@@ -391,6 +401,8 @@ Prop[mt_, "MatrixRepresentation"] :=
         {False, False}, Inverse[mt["Matrix"]],
         _, IdentityMatrix[mt["Dimension"]]
     ]
+
+Prop[mt_, "CoordinateOneForms"] := DifferentialD /@ mt["Coordinates"]
 
 Prop[mt_, "Signature"] := Block[{
     eigenvalues = Eigenvalues[mt["MatrixRepresentation"]]
@@ -426,6 +438,12 @@ Prop[mt_, "Type"] := Switch[
     "Mixed"
 ]
 
+Prop[mt_, "CovariantQ"] := mt["Type"] === "Covariant"
+
+Prop[mt_, "ContravariantQ"] := mt["Type"] === "Contravariant"
+
+Prop[mt_, "MixedQ"] := mt["Type"] === "Mixed"
+
 Prop[mt_, "SignatyreType"] := Switch[
     mt["Signature"],
     {0, 0, 0}, "Unknown",
@@ -436,19 +454,29 @@ Prop[mt_, "SignatyreType"] := Switch[
     _, "General"
 ]
 
+Prop[mt_, "RiemannianQ"] := mt["SignatyreType"] === "Riemannian"
+
+Prop[mt_, "PseudoRiemannianQ"] := mt["SignatyreType"] === "Pseudo-Riemannian"
+
+Prop[mt_, "LorentzianQ"] := mt["SignatyreType"] === "Lorentzian"
+
+
 Prop[mt_, "Symmetry"] := TensorSymmetry[mt["Tensor"]]
 
-Prop[mt_, "Symbol"] := Switch[
-    mt["Type"]
-    ,
-    "Covariant", Subscript[g, Row[{mu, nu}]]
-    ,
-    "Contravariant", Superscript[g, Row[{mu, nu}]]
-    ,
-    "Mixed", Subsuperscript[g, mu, nu]
-]
+Prop[mt_, "SymmetricQ"] := mt["Symmetry"] === Symmetric[{1, 2}]
+
+Prop[mt_, "DiagonalQ"] := DiagonalMatrixQ[mt["MatrixRepresentation"]]
+
 
 Prop[mt_, "Inverse" | "InverseMetricTensor"] := MetricTensor[mt, False, False]
+
+
+Prop[mt_, prop_String, args___] /; MemberQ[ShapedTensor["Properties"], prop] := mt["ShapedTensor"][prop, args]
+
+
+(* General fallback constructor *)
+
+mt : MetricTensor[arg_, args___] /; ! MetricTensorQ[Unevaluated[mt]] := MetricTensor[MetricTensor[arg], args]
 
 
 (* Formatting *)
