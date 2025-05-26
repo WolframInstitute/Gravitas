@@ -22,7 +22,7 @@ DimensionName[i_, Automatic] := DimensionName[i, CharacterRange["i", "z"]]
 DimensionName[i_] := DimensionName[i, Automatic]
 
 
-CanonicalSymbolName[s_Symbol ? AtomQ] := With[{t = Unevaluated @@ ResourceFunction["UnformalizeSymbols"][s, "DeferQ" -> True]}, ToString[t]]
+CanonicalSymbolName[s_Symbol ? AtomQ] := With[{t = Unevaluated @@ ResourceFunction["UnformalizeSymbols"][s, "DeferQ" -> True]}, SymbolName[t]]
 
 CanonicalSymbolName[s_] := s
 
@@ -61,6 +61,9 @@ Prop[d_, "Symbol"] := DimensionSymbol[d["SignedDimension"], d["Name"]]
 Prop[d_, "View", limit_Integer : 10] := With[{dim = d["Dimension"]},
     If[dim > limit, dim, Row[{dim, " : ", Row[d["Indices"], ","]}]]
 ]
+
+Prop[_, prop_String, ___] := Missing[prop]
+
 
 Dimension /: MakeBoxes[d_Dimension ? DimensionQ, form_] := With[{
     box = ToBoxes[d["Symbol"], form],

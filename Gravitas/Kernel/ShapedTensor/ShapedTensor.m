@@ -22,18 +22,29 @@ ShapedTensorQ[___] := False
 
 (* Mutation *)
 
-ShapedTensor[st_ ? ShapedTensorQ, arg_] := With[{shape = Shape[arg]},
+ShapedTensor[st_ ? ShapedTensorQ, arg1_, arg2_, args___] := With[{shape = Shape[arg1]},
     Which[
         ShapeQ[shape],
-        ShapedTensor[st["Tensor"], shape, st["Parameters"], st["Name"]],
-        MatchQ[arg, _List],
-        ShapedTensor[st["Tensor"], st["Shape"], arg, st["Name"]],
+        ShapedTensor[ShapedTensor[st["Tensor"], shape, st["Parameters"], st["Assumptions"], st["Name"]], arg2, args],
+        MatchQ[arg1, _List] && MatchQ[arg2, _List],
+        ShapedTensor[st["Tensor"], st["Shape"], arg1, arg2, st["Name"]],
+        MatchQ[arg1, _List],
+        ShapedTensor[st["Tensor"], st["Shape"], arg1, st["Assumptions"], arg2, args],
         True,
-        ShapedTensor[st["Tensor"], st["Shape"], st["Parameters"], arg]
+        ShapedTensor[st["Tensor"], st["Shape"], st["Parameters"], st["Assumptions"], arg1, arg2, args]
     ]
 ]
 
-ShapedTensor[st_ ? ShapedTensorQ, arg_, args__] := ShapedTensor[ShapedTensor[st, arg], args]
+ShapedTensor[st_ ? ShapedTensorQ, arg_] := With[{shape = Shape[arg]},
+    Which[
+        ShapeQ[shape],
+        ShapedTensor[st["Tensor"], shape, st["Parameters"], st["Assumptions"], st["Name"]],
+        MatchQ[arg, _List],
+        ShapedTensor[st["Tensor"], st["Shape"], arg, st["Assumptions"], st["Name"]],
+        True,
+        ShapedTensor[st["Tensor"], st["Shape"], st["Parameters"], st["Assumptions"], arg]
+    ]
+]
 
 ShapedTensor[st_ShapedTensor] := st
 
@@ -41,14 +52,14 @@ ShapedTensor[st_ShapedTensor] := st
 (* Constructors *)
 
 ShapedTensor[tensor_, variance : {__ ? BooleanQ}, args___] :=    
-    ShapedTensor[tensor, # * PadRight[- (-1) ^ Boole[variance], Length[#], 1] & @ ShapedTensor[tensor]["Dimensions"], args]
+    ShapedTensor[tensor, # * PadRight[(-1) ^ Boole[variance], Length[#], 1] & @ ShapedTensor[tensor]["Dimensions"], args]
 
 ShapedTensor[tensor_, Longest[variance : __ ? BooleanQ], args___] := ShapedTensor[tensor, {variance}, args]
 
-ShapedTensor[tensor_, shape_Shape ? ShapeQ] := ShapedTensor[tensor, shape, {}]
+ShapedTensor[tensor_, shape_Shape ? ShapeQ] := ShapedTensor[tensor, shape, {}, {}]
 
 ShapedTensor[tensor_, shape_Shape ? ShapeQ, name : Except[_List]] :=
-    ShapedTensor[tensor, shape, {}, name]
+    ShapedTensor[tensor, shape, {}, {}, name]
 
 
 st_ShapedTensor /; System`Private`HoldNotValidQ[st] && shapedTensorQ[Unevaluated[st]] :=
@@ -62,7 +73,7 @@ st_ShapedTensor /; System`Private`HoldNotValidQ[st] && shapedTensorQ[Unevaluated
 
 ShapedTensor["Properties"] := Union @ Join[
     {
-        "Properties", "Tensor", "Shape", "Parameters", "Name", "Dimension", "Symmetry", "Symbol", "Icon"
+        "Properties", "Tensor", "Shape", "Parameters", "Assumptions", "Name", "Dimension", "Symmetry", "Symbol", "Icon"
     },
     Shape["Properties"]
 ]
@@ -75,7 +86,9 @@ Prop[ShapedTensor[_, shape_, ___], "Shape"] := shape
 
 Prop[ShapedTensor[_, _, params_, ___], "Parameters"] := params
 
-Prop[ShapedTensor[_, _, _, name_, ___], "Name"] := name
+Prop[ShapedTensor[_, _, _, assumptions_, ___], "Assumptions"] := DeleteCases[assumptions, _ ? BooleanQ]
+
+Prop[ShapedTensor[_, _, _, _, name_, ___], "Name"] := name
 
 Prop[st_, "Name"] := tensorName[st["Tensor"]]
 
@@ -91,9 +104,9 @@ Prop[st_, "Symbol"] := Row[{
         With[{dim = #["SignedDimension"], name = #["Name"]},
         Tooltip[
             Which[
-                dim > 0, Overscript["", name],
-                dim < 0, Underscript["", name],
-                True, Overscript["", Style[name, Opacity[.3]]]
+                dim > 0, Superscript["", name],
+                dim < 0, Subscript["", name],
+                True, Superscript["", Style[name, Opacity[.3]]]
             ],
             #["View"]
         ]
@@ -123,6 +136,8 @@ Prop[st_, "Icon", limit_Integer : 10] := MatrixPlot[
 ]
 
 Prop[st_, prop_String] /; MemberQ[Shape["Properties"], prop] := st["Shape"][prop]
+
+Prop[_, prop_String, ___] := Missing[prop]
 
 
 (* UpValues *)
@@ -161,7 +176,8 @@ ShapedTensor /: MakeBoxes[st_ShapedTensor /; ShapedTensorQ[Unevaluated[st]], for
                 BoxForm`SummaryItem[{"Dimensions: ", st["Dimensions"]}]
             },
             {
-                BoxForm`SummaryItem[{"Parameters: ", st["Parameters"]}]
+                BoxForm`SummaryItem[{"Parameters: ", st["Parameters"]}],
+                BoxForm`SummaryItem[{"Assumptions: ", st["Assumptions"]}]
             }
         },
         {

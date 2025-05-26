@@ -1,10 +1,16 @@
 Package["WolframInstitute`Gravitas`ShapedTensor`"]
 
-PackageScope[tensorName]
-PackageScope[tensorDimensions]
-PackageScope[tensorRank]
-PackageScope[setDimensions]
+PackageExport[tensorDimensions]
+PackageExport[tensorName]
+PackageExport[tensorRank]
 
+PackageExport[squareMatrixQ]
+
+PackageExport[setDimensions]
+
+
+
+ClearAll[tensorDimensions, tensorRank, tensorName, squareMatrixQ, setDimensions]
 
 
 tensorDimensions[t_] := Replace[TensorDimensions[t], Except[_List] :> Dimensions[t]]
@@ -23,23 +29,28 @@ tensorName[TensorSymbol[s_, ___]] := s
 
 tensorName[___] := None
 
+squareMatrixQ[t_] := MatchQ[tensorDimensions[t], {n_, n_} | {_, 0}]
 
-setDimensions[TensorSymbol[s_, _, dom_ : Reals, sym___], dims : {___Integer ? Positive}] := Switch[dims,
+setDimensions[TensorSymbol[s_, _, dom_ : Reals, sym_ : {}], dims : {___Integer ? Positive}] := Switch[dims,
     {_}, VectorSymbol[s, dims, dom],
     {_, _}, MatrixSymbol[s, dims, dom, sym],
     _, ArraySymbol[s, dims, dom, sym]
 ]
 
-setDimensions[s_Symbol ? AtomQ, dims : {___Integer ? Positive}] := With[{
-    pos = FirstPosition[$Assumptions, Element[s, _], Missing[], {1}, Heads -> False],
-    head = Switch[dims, {_}, Vectors, {_, _}, Matrices, {_, _, _}, Arrays]
+setDimensions[s_Symbol ? AtomQ, dims : {___Integer ? Positive}, defDom_ : Reals, defSym_ : {}] := Block[{
+    pos,
+    newElement = With[{head = Switch[dims, {_}, Vectors, {_, _}, Matrices, _, Arrays]},
+        If[head === Vectors, Element[s, head[dims, #]] &,  Element[s, head[dims, ##]] &]
+    ]
 },
+    $Assumptions = Developer`ToList[$Assumptions];
+    pos = FirstPosition[$Assumptions, Element[s, _], Missing[], {1}, Heads -> False];
     If[ MissingQ[pos],
-        AppendTo[$Assumptions, Element[s, head[dims, Reals]]],
+        AppendTo[$Assumptions, newElement[defDom, defSym]],
         $Assumptions //= ReplacePart[
             pos -> Replace[
                 Extract[$Assumptions, pos],
-                Element[_, TensorAssumptions[_, dom_ : Reals, sym___]] :> Element[s, head[dims, dom, sym]]
+                Element[_, TensorAssumptions[_, dom_ : defDom, sym_ : defSym]] :> newElement[dom, sym]
             ]
         ]
     ];
@@ -61,3 +72,4 @@ setDimensions[t_, dims : {___Integer ? Positive}, pad_ : 0] :=
         dims,
         pad
     ]
+

@@ -39,10 +39,12 @@ Prop[s_, "Dimensions"] := Abs[s["SignedDimensions"]]
 
 Prop[s_, "Rank"] := Length[s["Indices"]]
 
-Prop[s_, "Variance"] := Thread[s["SignedDimensions"] > 0]
+Prop[s_, "Variance"] := Thread[s["SignedDimensions"] < 0]
 
 Prop[s_, "Names", alphabet_ : Automatic] :=
     MapIndexed[Replace[#1, {Dimension[_, name_, ___] :> name, _ :> DimensionName[#2[[1]], alphabet]}] &, s["Indices"]]
+
+Prop[_, prop_String, ___] := Missing[prop]
 
 Shape /: MakeBoxes[s_Shape ? ShapeQ, form_] := With[{
     box = ToBoxes[
