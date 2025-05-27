@@ -1,5 +1,7 @@
 Package["WolframInstitute`Gravitas`ShapedTensor`"]
 
+PackageImport["WolframInstitute`Gravitas`ShapedTensor`TensorUtilities`"]
+
 PackageExport[ShapedTensorQ]
 PackageExport[ShapedTensor]
 
@@ -9,8 +11,8 @@ ClearAll[shapedTensorQ, ShapedTensorQ, ShapedTensor, Prop]
 
 (* Validation *)
 
-shapedTensorQ[ShapedTensor[tensor_, shape_Shape ? ShapeQ, params_List, ___]] :=
-    DeleteCases[tensorDimensions[tensor], 0] === DeleteCases[shape["Dimensions"], 0]
+shapedTensorQ[ShapedTensor[tensor_, shape_Shape ? ShapeQ, params_List, assumptions_List, ___]] :=
+    DeleteCases[Assuming[assumptions, tensorDimensions[tensor]], 0] === DeleteCases[shape["Dimensions"], 0]
 
 shapedTensorQ[___] := False
 
@@ -52,11 +54,13 @@ ShapedTensor[st_ShapedTensor] := st
 (* Constructors *)
 
 ShapedTensor[tensor_, variance : {__ ? BooleanQ}, args___] :=    
-    ShapedTensor[tensor, # * PadRight[(-1) ^ Boole[variance], Length[#], 1] & @ ShapedTensor[tensor]["Dimensions"], args]
+    ShapedTensor[tensor, # * PadRight[- (-1) ^ Boole[variance], Length[#], 1] & @ ShapedTensor[tensor]["Dimensions"], args]
 
 ShapedTensor[tensor_, Longest[variance : __ ? BooleanQ], args___] := ShapedTensor[tensor, {variance}, args]
 
 ShapedTensor[tensor_, shape_Shape ? ShapeQ] := ShapedTensor[tensor, shape, {}, {}]
+
+ShapedTensor[tensor_, shape_Shape ? ShapeQ, params_List] := ShapedTensor[tensor, shape, params, {}]
 
 ShapedTensor[tensor_, shape_Shape ? ShapeQ, name : Except[_List]] :=
     ShapedTensor[tensor, shape, {}, {}, name]
@@ -101,7 +105,7 @@ Prop[st_, "Symmetry"] := TensorSymmetry[st["Tensor"]]
 Prop[st_, "Symbol"] := Row[{
     Tooltip[Replace[st["Name"], None -> \[FormalCapitalT]], st["SignedDimensions"]],
     Splice @ Map[
-        With[{dim = #["SignedDimension"], name = #["Name"]},
+        With[{index = #["Index"]}, {dim = #["SignedDimension"], name = If[MissingQ[index], #["Name"], index]},
         Tooltip[
             Which[
                 dim > 0, Superscript["", name],
@@ -116,13 +120,14 @@ Prop[st_, "Symbol"] := Row[{
 }]
    
 
-squareDimensions[d_, limit_ : 10] := With[{w = Floor[Sqrt[d]]}, Clip[{w, d / w}, {1, limit}]]
+squareDimensions[d_, limit_ : 10] := With[{w = Floor[Sqrt[d]]}, Clip[{w, If[w == 0, 0, d / w]}, {1, limit}]]
 
 Prop[st_, "Icon", limit_Integer : 10] := MatrixPlot[
     Map[
         Replace[{x_ ? (Not @* NumericQ) :> BlockRandom[RandomComplex[], RandomSeeding -> Hash[x]], x_ :> N[x]}],
         Replace[
-            st["Tensor"], {
+            st["Tensor"],
+            {
                 m_ ? MatrixQ :> m[[;; UpTo[limit], ;; UpTo[limit]]],
                 t_ ? ArrayQ :> ArrayReshape[t, squareDimensions[st["Dimension"], limit]],
                 _ :> BlockRandom[RandomReal[{-1, 1}, squareDimensions[st["Dimension"], limit]], RandomSeeding -> Hash[st]]
@@ -147,9 +152,18 @@ ShapedTensor /: Normal[st_ShapedTensor ? ShapedTensorQ] := st["Tensor"]
 
 (* General fallback *)
 
+st : ShapedTensor[t_, arg_, params_, assumptions_List, args___] /; ! ShapedTensorQ[Unevaluated[st]] := With[{shape = Shape[arg], dims = Assuming[assumptions, tensorDimensions[t]]},
+    If[ ShapeQ[shape],
+        ShapedTensor[If[dims === shape["Dimensions"], t, setDimensions[t, shape["Dimensions"]]], shape, params, assumptions, args],
+        ShapedTensor[t, dims, params, assumptions, args]
+    ]
+]
+
+st : ShapedTensor[t_, arg_, params_, name_, args___] /; ! ShapedTensorQ[Unevaluated[st]] := ShapedTensor[t, arg, params, {}, name, args]
+
 st : ShapedTensor[t_, arg_, args___] /; ! ShapedTensorQ[Unevaluated[st]] := With[{shape = Shape[arg]},
     If[ ShapeQ[shape],
-        ShapedTensor[setDimensions[t, shape["Dimensions"]], shape, args],
+        ShapedTensor[If[tensorDimensions[t] === shape["Dimensions"], t, setDimensions[t, shape["Dimensions"]]], shape, args],
         ShapedTensor[t, tensorDimensions[t], arg, args]
     ]
 ]
@@ -157,10 +171,26 @@ st : ShapedTensor[t_, arg_, args___] /; ! ShapedTensorQ[Unevaluated[st]] := With
 ShapedTensor[t_] := ShapedTensor[t, tensorDimensions[t]]
 
 
+(* Index juggling *)
+
+st_ShapedTensor[is : (_Integer | All) ..] := With[{indices = st["Indices"]},
+    ShapedTensor[
+        tensorPart[st["Tensor"], {is}],
+        MapThread[
+            If[IntegerQ[#2], Dimension[#1, Mod[#2, #1["Dimension"], 1]], #1] &, 
+            {indices, ReplacePart[indices, Thread[Take[Select[indices, ! #["IndexQ"] & -> "Index"], UpTo[Length[{is}]]] -> {is}]]}
+        ],
+        st["Parameters"], st["Assumptions"], st["Name"]
+    ]
+]
+
+st_ShapedTensor[] := st
+
+
 (* Formatting *)
 
 ShapedTensor /: MakeBoxes[st_ShapedTensor /; ShapedTensorQ[Unevaluated[st]], TraditionalForm] := With[{
-    boxes = ToBoxes[st["Symbol"], TraditionalForm]
+    boxes = ToBoxes[Style[st["Symbol"], "ShowStringCharacters" -> False], TraditionalForm]
 },
     InterpretationBox[
         boxes,

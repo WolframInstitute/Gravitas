@@ -1,8 +1,9 @@
-Package["WolframInstitute`Gravitas`ShapedTensor`"]
+Package["WolframInstitute`Gravitas`ShapedTensor`TensorUtilities`"]
 
 PackageExport[tensorDimensions]
 PackageExport[tensorName]
 PackageExport[tensorRank]
+PackageExport[tensorPart]
 
 PackageExport[squareMatrixQ]
 
@@ -10,10 +11,10 @@ PackageExport[setDimensions]
 
 
 
-ClearAll[tensorDimensions, tensorRank, tensorName, squareMatrixQ, setDimensions]
+ClearAll[tensorDimensions, tensorRank, tensorName, tensorPart, squareMatrixQ, setDimensions]
 
 
-tensorDimensions[t_] := Replace[TensorDimensions[t], Except[_List] :> Dimensions[t]]
+tensorDimensions[t_] := Replace[TensorDimensions[t], Except[_List] :> {}]
 
 tensorRank[t_] := Replace[TensorRank[t], Except[_Integer] -> 0]
 
@@ -30,6 +31,7 @@ tensorName[TensorSymbol[s_, ___]] := s
 tensorName[___] := None
 
 squareMatrixQ[t_] := MatchQ[tensorDimensions[t], {n_, n_} | {_, 0}]
+
 
 setDimensions[TensorSymbol[s_, _, dom_ : Reals, sym_ : {}], dims : {___Integer ? Positive}] := Switch[dims,
     {_}, VectorSymbol[s, dims, dom],
@@ -59,17 +61,39 @@ setDimensions[s_Symbol ? AtomQ, dims : {___Integer ? Positive}, defDom_ : Reals,
 
 setDimensions[t_, dims : {___, 0, ___}] := ArrayReshape[{}, Append[DeleteCases[dims, 0], 0]]
 
-setDimensions[t_, dims : {___Integer ? Positive}, pad_ : 0] :=
-    PadRight[
-        Replace[
-            ArrayDepth[t] - Length[dims],
-            {
-                0 :> t,
-                p_Integer ? Positive :> Flatten[t, p],
-                n_Integer :> Nest[List, t, - n]
-            }
-        ],
-        dims,
-        pad
+setDimensions[t_, dims : {___Integer ? Positive}, pad_ : 0] := With[{
+    s = Replace[
+        ArrayDepth[t] - Length[dims],
+        {
+            0 :> t,
+            p_Integer ? Positive :> Flatten[t, p],
+            n_Integer :> Nest[List, t, - n]
+        }
     ]
+},
+    If[dims === {}, s, PadRight[s, dims, pad]]
+]
+
+
+tensorPart[t_, {i_, is___}, k_ : 0] := With[{nest = Nest[#[] &, #, k] &},
+    If[ i === All,
+        tensorPart[t, {is}, k + 1],
+        tensorPart[
+            Replace[
+                t,
+                {
+                    (VectorSymbol | ArraySymbol)[s_, {_} | _Integer, dom___] /; k < 1 :> ArraySymbol[nest[s][i], {}, dom],
+                    (MatrixSymbol | ArraySymbol)[s_, ds : {_, _}, dom_ : Reals, ___] /; k < 2 :> VectorSymbol[nest[s][i], Drop[ds, {k + 1}], dom],
+                    HoldPattern[ArraySymbol[s_, ds_List, dom_, ___]] /; k < Length[ds] :> If[Length[ds] - k == 3, MatrixSymbol, ArraySymbol][nest[s][i], Drop[ds, {k + 1}], dom],
+                    s_Symbol ? AtomQ :> setDimensions[s, Drop[tensorDimensions[t], {k + 1}]],
+                    _ :> (Part[t, ##] & @@ Append[ConstantArray[All, k], i])
+                }
+            ],
+            {is},
+            0
+        ]
+    ]
+]
+
+tensorPart[t_, {}, ___] := t
 

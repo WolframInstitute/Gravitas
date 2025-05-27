@@ -1,6 +1,7 @@
 Package["WolframInstitute`Gravitas`"]
 
 PackageImport["WolframInstitute`Gravitas`ShapedTensor`"]
+PackageImport["WolframInstitute`Gravitas`ShapedTensor`TensorUtilities`"]
 
 PackageExport[MetricTensorQ]
 PackageExport[MetricTensor]
