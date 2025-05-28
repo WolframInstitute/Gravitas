@@ -3,6 +3,7 @@ Package["WolframInstitute`Gravitas`ShapedTensor`"]
 PackageExport[DimensionQ]
 PackageExport[Dimension]
 
+PackageScope[CanonicalSymbolName]
 PackageScope[DimensionName]
 PackageScope[DimensionSymbol]
 

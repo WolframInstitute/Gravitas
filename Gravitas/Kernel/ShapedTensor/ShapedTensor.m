@@ -73,7 +73,7 @@ st_ShapedTensor /; System`Private`HoldNotValidQ[st] && shapedTensorQ[Unevaluated
 
 (* Properties *)
 
-(m_ShapedTensor ? ShapedTensorQ)[prop_String | prop_String[args___]] := Prop[m, prop, args]
+(m_ShapedTensor ? ShapedTensorQ)[prop_String | prop_String[args___]] /; MemberQ[ShapedTensor["Properties"], prop] := Prop[m, prop, args]
 
 ShapedTensor["Properties"] := Union @ Join[
     {
@@ -185,6 +185,18 @@ st_ShapedTensor[is : (_Integer | All) ..] := With[{indices = st["Indices"]},
 ]
 
 st_ShapedTensor[] := st
+
+st_ShapedTensor[is__] := Block[{indices = st["Indices"], names, repl, perm, renames},
+    names = PositionIndex[Through[indices["Name"]]];
+    repl = MapIndexed[Lookup[names, Key[CanonicalSymbolName[#1]], Missing[#2]] -> #2 &, {is}];
+    perm = FindPermutation @ Map[If[MissingQ[#], Replace[repl] @ Replace[repl] @ First[#], #] &, repl[[All, 1]]];
+    renames = Cases[repl, (Missing[k_] -> _) :> k -> Extract[{is}, k]];
+    ShapedTensor[
+        tensorTranspose[st["Tensor"], perm],
+        SubsetMap[MapThread[Dimension, {#, renames[[All, 2]]}] &, Permute[indices, perm], renames[[All, 1]]],
+        st["Parameters"], st["Assumptions"], st["Name"]
+    ]
+]
 
 
 (* Formatting *)

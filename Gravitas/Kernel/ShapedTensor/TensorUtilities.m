@@ -4,6 +4,7 @@ PackageExport[tensorDimensions]
 PackageExport[tensorName]
 PackageExport[tensorRank]
 PackageExport[tensorPart]
+PackageExport[tensorTranspose]
 
 PackageExport[squareMatrixQ]
 
@@ -11,7 +12,7 @@ PackageExport[setDimensions]
 
 
 
-ClearAll[tensorDimensions, tensorRank, tensorName, tensorPart, squareMatrixQ, setDimensions]
+ClearAll[tensorDimensions, tensorRank, tensorName, tensorPart, tensorTranspose, squareMatrixQ, setDimensions]
 
 
 tensorDimensions[t_] := Replace[TensorDimensions[t], Except[_List] :> {}]
@@ -97,3 +98,7 @@ tensorPart[t_, {i_, is___}, k_ : 0] := With[{nest = Nest[#[] &, #, k] &},
 
 tensorPart[t_, {}, ___] := t
 
+
+(* tensorTranspose[t_Symbol ? AtomQ | t : TensorSymbol[__], perm_] := setDimesions[t, Permute[tensorDimensions[t], perm]] *)
+
+tensorTranspose[t_, perm_] := Transpose[t, perm]
