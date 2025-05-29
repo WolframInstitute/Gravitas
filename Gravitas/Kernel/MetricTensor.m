@@ -1,7 +1,7 @@
 Package["WolframInstitute`Gravitas`"]
 
-PackageImport["WolframInstitute`Gravitas`ShapedTensor`"]
-PackageImport["WolframInstitute`Gravitas`ShapedTensor`TensorUtilities`"]
+PackageImport["WolframInstitute`Gravitas`IndexArray`"]
+PackageImport["WolframInstitute`Gravitas`IndexArray`TensorUtilities`"]
 
 PackageExport[MetricTensorQ]
 PackageExport[MetricTensor]
@@ -12,8 +12,8 @@ ClearAll[Prop]
 
 (* Validation *)
 
-metricTensorQ[MetricTensor[st_ShapedTensor]] :=
-    ShapedTensorQ[st] &&
+metricTensorQ[MetricTensor[st_IndexArray]] :=
+    IndexArrayQ[st] &&
     MatchQ[st["Dimensions"], {n_, n_}]
 
 metricTensorQ[___] := False
@@ -369,9 +369,9 @@ MetricTensor[vector_ ? VectorQ] := MetricTensor[DiagonalMatrix[vector]]
 
 
 MetricTensor[matrix_, coordinates_List, i : _ ? BooleanQ : True, j : _ ? BooleanQ : True, assumptions_List : {}, name_ : "g"] := With[{
-    st = ShapedTensor[matrix, {i, j}, coordinates, assumptions, name]
+    st = IndexArray[matrix, {i, j}, coordinates, assumptions, name]
 },
-    MetricTensor[ShapedTensor[st, Shape @@ MapThread[Dimension[#1, #2, coordinates] &, {st["Indices"], {mu, nu}}]]]
+    MetricTensor[IndexArray[st, Shape @@ MapThread[Dimension[#1, #2, coordinates] &, {st["Indices"], {mu, nu}}]]]
 ]
 
 m_MetricTensor /; System`Private`HoldNotValidQ[m] && metricTensorQ[Unevaluated[m]] :=
@@ -394,7 +394,7 @@ MetricTensor["Properties"] = {
 
 Prop[_, "Properties"] := MetricTensor["Properties"]
 
-Prop[MetricTensor[st_] ? MetricTensorQ, "ShapedTensor"] := st
+Prop[MetricTensor[st_] ? MetricTensorQ, "IndexArray"] := st
 
 
 Prop[mt_, "Matrix"] := mt["Tensor"]
@@ -488,7 +488,7 @@ Prop[mt_, "DiagonalQ"] := DiagonalMatrixQ[mt["MatrixRepresentation"]]
 Prop[mt_, "Inverse" | "InverseMetricTensor"] := MetricTensor[mt, False, False]
 
 
-Prop[mt_, prop_String, args___] /; MemberQ[ShapedTensor["Properties"], prop] := mt["ShapedTensor"][prop, args]
+Prop[mt_, prop_String, args___] /; MemberQ[IndexArray["Properties"], prop] := mt["IndexArray"][prop, args]
 
 
 Prop[_, prop_String, ___] := Missing[prop]

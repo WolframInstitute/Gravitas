@@ -1,4 +1,4 @@
-Package["WolframInstitute`Gravitas`ShapedTensor`TensorUtilities`"]
+Package["WolframInstitute`Gravitas`IndexArray`TensorUtilities`"]
 
 PackageExport[tensorDimensions]
 PackageExport[tensorName]

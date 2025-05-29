@@ -1,4 +1,4 @@
-Package["WolframInstitute`Gravitas`ShapedTensor`"]
+Package["WolframInstitute`Gravitas`IndexArray`"]
 
 PackageExport[DimensionQ]
 PackageExport[Dimension]
