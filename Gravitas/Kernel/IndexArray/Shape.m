@@ -23,7 +23,7 @@ Shape[s_Shape] := s
 
 
 Shape["Properties"] = Sort @ {
-    "Indices", "SignedDimensions", "Dimensions", "Rank", "Size", "Variance", "Names",
+    "Indices", "FreeIndices", "FreeIndexPositions", "SignedDimensions", "Dimensions", "Rank", "Size", "Variance", "Names",
     "Properties"
 }
 
@@ -31,7 +31,11 @@ Shape["Properties"] = Sort @ {
 
 Prop[Shape[ds___], "Indices"] := {ds}
 
-Prop[s_, "SignedDimensions"] := If[#["IndexQ"], Nothing, #["SignedDimension"]] & /@ s["Indices"]
+Prop[s_, "FreeIndices"] := Select[s["Indices"], #["FreeQ"] &]
+
+Prop[s_, "SignedDimensions"] := Through[s["FreeIndices"]["SignedDimension"]]
+
+Prop[s_, "FreeIndexPositions"] := Select[s["Indices"], (#["FreeQ"] &) -> "Index"]
 
 Prop[s_, "Dimensions"] := Abs[s["SignedDimensions"]]
 
@@ -42,7 +46,17 @@ Prop[s_, "Size"] := Length[s["Indices"]]
 Prop[s_, "Variance"] := Thread[s["SignedDimensions"] > 0]
 
 Prop[s_, "Names", alphabet_ : Automatic] :=
-    MapIndexed[With[{name = #1["Name"], index = #1["Index"]}, If[MissingQ[index], If[name === None, DimensionName[#2[[1]], alphabet], name], index]] &, s["Indices"]]
+    MapIndexed[
+        With[{
+            name = #1["Name"], index = #1["Index"]
+        },
+            If[ MissingQ[index],
+                If[name === None, DimensionName[#2[[1]], alphabet], name],
+                #["IndexName"]
+            ]
+        ] &,
+        s["Indices"]
+    ]
 
 Prop[_, prop_String, ___] := Missing[prop]
 

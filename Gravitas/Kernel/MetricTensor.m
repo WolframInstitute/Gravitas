@@ -7,14 +7,12 @@ PackageExport[MetricTensorQ]
 PackageExport[MetricTensor]
 
 
-ClearAll[MetricTensor]
-ClearAll[Prop]
+ClearAll[metricTensorQ, MetricTensorQ, MetricTensor, Prop]
 
 (* Validation *)
 
-metricTensorQ[MetricTensor[st_IndexArray]] :=
-    IndexArrayQ[st] &&
-    MatchQ[st["Dimensions"], {n_, n_}]
+metricTensorQ[MetricTensor[it_IndexTensor]] :=
+    IndexTensorQ[it] && it["MetricQ"] && it["Rank"] == 2
 
 metricTensorQ[___] := False
 
@@ -371,18 +369,19 @@ MetricTensor[vector_ ? VectorQ] := MetricTensor[DiagonalMatrix[vector]]
 MetricTensor[matrix_, coordinates_List, i : _ ? BooleanQ : True, j : _ ? BooleanQ : True, assumptions_List : {}, name_ : "g"] := With[{
     st = IndexArray[matrix, {i, j}, coordinates, assumptions, name]
 },
-    MetricTensor[IndexArray[st, Shape @@ MapThread[Dimension[#1, #2, coordinates] &, {st["Indices"], {mu, nu}}]]]
+    MetricTensor[IndexTensor[IndexArray[st, Shape @@ MapThread[Dimension[#1, #2, coordinates] &, {st["Indices"], {mu, nu}}]]]]
 ]
 
-m_MetricTensor /; System`Private`HoldNotValidQ[m] && metricTensorQ[Unevaluated[m]] :=
-    System`Private`SetNoEntry[System`Private`HoldSetValid[m]]
+mt_MetricTensor /; System`Private`HoldNotValidQ[mt] && metricTensorQ[Unevaluated[mt]] :=
+    System`Private`SetNoEntry[System`Private`HoldSetValid[mt]]
 
 
 (* Properties *)
 
-(m_MetricTensor ? MetricTensorQ)[prop_String | prop_String[args___]] := Prop[m, prop, args] = Prop[m, prop, args]
+(mt_MetricTensor ? MetricTensorQ)[prop_String | prop_String[args___]] := Prop[mt, prop, args] = Prop[mt, prop, args]
 
 MetricTensor["Properties"] = {
+    "IndexTensor",
     "MatrixRepresentation", "ReducedMatrixRepresentation", "Coordinates", "CoordinateOneForms", "Indices", "CovariantQ", 
     "ContravariantQ", "MixedQ", "Symbol", "Dimensions", "SymmetricQ", "DiagonalQ", "Signature", "RiemannianQ", 
     "PseudoRiemannianQ", "LorentzianQ", "RiemannianConditions", "PseudoRiemannianConditions", "LorentzianConditions", 
@@ -394,7 +393,7 @@ MetricTensor["Properties"] = {
 
 Prop[_, "Properties"] := MetricTensor["Properties"]
 
-Prop[MetricTensor[st_] ? MetricTensorQ, "IndexArray"] := st
+Prop[MetricTensor[it_] ? MetricTensorQ, "IndexTensor"] := it
 
 
 Prop[mt_, "Matrix"] := mt["Tensor"]
@@ -488,7 +487,7 @@ Prop[mt_, "DiagonalQ"] := DiagonalMatrixQ[mt["MatrixRepresentation"]]
 Prop[mt_, "Inverse" | "InverseMetricTensor"] := MetricTensor[mt, False, False]
 
 
-Prop[mt_, prop_String, args___] /; MemberQ[IndexArray["Properties"], prop] := mt["IndexArray"][prop, args]
+Prop[mt_, prop_String, args___] /; MemberQ[IndexTensor["Properties"], prop] := mt["IndexTensor"][prop, args]
 
 
 Prop[_, prop_String, ___] := Missing[prop]
@@ -497,6 +496,13 @@ Prop[_, prop_String, ___] := Missing[prop]
 (* General fallback constructor *)
 
 mt : MetricTensor[arg_, args__] /; ! MetricTensorQ[Unevaluated[mt]] := MetricTensor[MetricTensor[arg], args]
+
+
+(* Index juggling *)
+
+mt_MetricTensor[is___] := With[{newArray = mt["IndexArray"][is]},
+    If[MetricTensorQ[MetricTensor[newArray]], MetricTensor[newArray], IndexTensor[newArray, mt]]
+]
 
 
 (* Formatting *)

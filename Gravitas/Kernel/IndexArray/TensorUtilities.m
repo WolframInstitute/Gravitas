@@ -1,5 +1,7 @@
 Package["WolframInstitute`Gravitas`IndexArray`TensorUtilities`"]
 
+PackageImport["WolframInstitute`Gravitas`Utilities`"]
+
 PackageExport[tensorDimensions]
 PackageExport[tensorName]
 PackageExport[tensorRank]
@@ -46,7 +48,7 @@ setDimensions[s_Symbol ? AtomQ, dims : {___Integer ? Positive}, defDom_ : Reals,
         If[head === Vectors, Element[s, head[dims, #]] &,  Element[s, head[dims, ##]] &]
     ]
 },
-    $Assumptions = Developer`ToList[$Assumptions];
+    $Assumptions = ToList[$Assumptions];
     pos = FirstPosition[$Assumptions, Element[s, _], Missing[], {1}, Heads -> False];
     If[ MissingQ[pos],
         AppendTo[$Assumptions, newElement[defDom, defSym]],
