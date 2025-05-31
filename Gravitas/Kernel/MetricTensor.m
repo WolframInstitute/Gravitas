@@ -65,7 +65,7 @@ padCoordinates[Automatic, d_] := padCoordinates[{}, d]
 
 MetricTensor["Symmetric"[d : _Integer ? Positive : 4, g_ : g], args___] := 
     MetricTensor[
-        SymmetrizedArray[(# -> Subscript[g, #] &) /@ Select[Tuples[Range[d], 2], OrderedQ], {d, d}, Symmetric[{1, 2}]],
+        SymmetrizedArray[(# -> Subscript[g, Sequence @@ #] &) /@ Select[Tuples[Range[d], 2], OrderedQ], {d, d}, Symmetric[{1, 2}]],
         args
     ]
 
@@ -76,7 +76,7 @@ MetricTensor["SymmetricField"[d : _Integer ? Positive : 4, g_ : g], coordinates_
     xs = padCoordinates[coordinates, d]
 },
     MetricTensor[
-        SymmetrizedArray[(# -> Subscript[g, #] @@ xs &) /@ Select[Tuples[Range[d], 2], OrderedQ], {d, d}, Symmetric[{1, 2}]],
+        SymmetrizedArray[(# -> Subscript[g, Sequence @@ #] @@ xs &) /@ Select[Tuples[Range[d], 2], OrderedQ], {d, d}, Symmetric[{1, 2}]],
         xs,
         args
     ]
@@ -87,7 +87,7 @@ MetricTensor["SymmetricField"[d : _Integer ? Positive : 4, g_ : g], coordinates_
 
 MetricTensor["Asymmetric"[d : _Integer ? Positive : 4, g_ : g], args___] := 
     MetricTensor[
-        SymmetrizedArray[(# -> Subscript[g, #] &) /@ Subsets[Range[d], {2}], {d, d}, Antisymmetric[{1, 2}]],
+        SymmetrizedArray[(# -> Subscript[g, Sequence @@ #] &) /@ Subsets[Range[d], {2}], {d, d}, Antisymmetric[{1, 2}]],
         args
     ]
 
@@ -98,7 +98,7 @@ MetricTensor["AsymmetricField"[d : _Integer ? Positive : 4, g_ : g], coordinates
     xs = padCoordinates[coordinates, d]
 },
     MetricTensor[
-        SymmetrizedArray[(# -> Subscript[g, #] @@ xs &) /@ Subsets[Range[d], {2}], {d, d}, Antisymmetric[{1, 2}]],
+        SymmetrizedArray[(# -> Subscript[g, Sequence @@ #] @@ xs &) /@ Subsets[Range[d], {2}], {d, d}, Antisymmetric[{1, 2}]],
         xs,
         args
     ]
@@ -336,7 +336,7 @@ MetricTensor["FLRW"[k_ : k, a_ : a], {t_ : t, r_ : r, theta_ : theta, phi_ : phi
 (* Mutation *)
 
 MetricTensor[mt_MetricTensor, coordinates_List, {i_ ? BooleanQ, j_ ? BooleanQ}, assumptions_List, name_] :=
-    MetricTensor[mt["Matrix"], padCoordinates[coordinates, mt["Dimension"]], i, j, assumptions, name]
+    MetricTensor[IndexTensor[MetricTensor[mt["Matrix"], padCoordinates[coordinates, mt["Dimension"]], i, j, assumptions, name]["IndexTensor"], mt["IndexArray"]["Indices"]]]
 
 MetricTensor[mt_MetricTensor, coordinates_List, args___] := MetricTensor[MetricTensor[mt, coordinates, mt["Indices"], mt["Assumptions"], mt["Name"]], args]
 
@@ -366,7 +366,7 @@ MetricTensor[matrix_ ? squareMatrixQ] := MetricTensor[matrix, Superscript[x, #] 
 MetricTensor[vector_ ? VectorQ] := MetricTensor[DiagonalMatrix[vector]]
 
 
-MetricTensor[matrix_, coordinates_List, i : _ ? BooleanQ : True, j : _ ? BooleanQ : True, assumptions_List : {}, name_ : "g"] := With[{
+MetricTensor[matrix_, coordinates_List, i : _ ? BooleanQ : False, j : _ ? BooleanQ : False, assumptions_List : {}, name_ : "g"] := With[{
     st = IndexArray[matrix, {i, j}, coordinates, assumptions, name]
 },
     MetricTensor[IndexTensor[IndexArray[st, Shape @@ MapThread[Dimension[#1, #2, coordinates] &, {st["Indices"], {mu, nu}}]]]]
@@ -477,8 +477,6 @@ Prop[mt_, "PseudoRiemannianQ"] := mt["SignatyreType"] === "Pseudo-Riemannian"
 Prop[mt_, "LorentzianQ"] := mt["SignatyreType"] === "Lorentzian"
 
 
-Prop[mt_, "Symmetry"] := TensorSymmetry[mt["Tensor"]]
-
 Prop[mt_, "SymmetricQ"] := mt["Symmetry"] === Symmetric[{1, 2}]
 
 Prop[mt_, "DiagonalQ"] := DiagonalMatrixQ[mt["MatrixRepresentation"]]
@@ -495,15 +493,39 @@ Prop[_, prop_String, ___] := Missing[prop]
 
 (* General fallback constructor *)
 
-mt : MetricTensor[arg_, args__] /; ! MetricTensorQ[Unevaluated[mt]] := MetricTensor[MetricTensor[arg], args]
+MetricTensor[arg_, args__] /; ! MetricTensorQ[Unevaluated[mt]] := With[{mt = MetricTensor[arg]},
+    Which[
+        ! MetricTensorQ[mt],
+        Failure["IndexArray", <|"MessageTemplate" -> "Badly specified metric tensor: ``", "MessageParameters" -> {arg}|>]
+        ,
+        True,
+        MetricTensor[mt, args]
+    ]
+]
 
 
 (* Index juggling *)
 
-mt_MetricTensor[is___] := With[{newArray = mt["IndexArray"][is]},
-    If[MetricTensorQ[MetricTensor[newArray]], MetricTensor[newArray], IndexTensor[newArray, mt]]
+mt_MetricTensor[is___] := With[{newTensor = MetricTensor[mt["IndexTensor"][is]]},
+    If[MetricTensorQ[newTensor], newTensor, First[newTensor]]
 ]
 
+
+(* UpValues *)
+
+Scan[
+    Function[f,
+        MetricTensor /: f[mt_MetricTensor ? MetricTensorQ, args___] := f[mt["IndexTensor"], args]
+    ],
+    {Normal, Dimensions, SquareMatrixQ}
+]
+
+Scan[
+    Function[f,
+        MetricTensor /: f[mt_MetricTensor ? MetricTensorQ, args___] := MetricTensor[f[mt["IndexTensor"], args]]
+    ],
+    {Inverse}
+]
 
 (* Formatting *)
 
@@ -531,7 +553,7 @@ MetricTensor /: MakeBoxes[mt_MetricTensor /; MetricTensorQ[Unevaluated[mt]], for
         },
         {
             {
-                BoxForm`SummaryItem[{"Signature: ", TimeConstrained[Row[{mt["SignatyreType"], ": ", Row[mt["SignatureSigns"]]}], 1]}]
+                BoxForm`SummaryItem[{"Signature: ", TimeConstrained[Row[{mt["SignatyreType"], ": ", Row[mt["SignatureSigns"]]}], .25]}]
             },
             {
                 BoxForm`SummaryItem[{"Symmetry: ", mt["Symmetry"]}],

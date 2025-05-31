@@ -3,8 +3,9 @@ Package["WolframInstitute`Gravitas`IndexArray`TensorUtilities`"]
 PackageImport["WolframInstitute`Gravitas`Utilities`"]
 
 PackageExport[tensorDimensions]
-PackageExport[tensorName]
 PackageExport[tensorRank]
+PackageExport[tensorSymmetry]
+PackageExport[tensorName]
 PackageExport[tensorPart]
 PackageExport[tensorTranspose]
 
@@ -20,6 +21,8 @@ ClearAll[tensorDimensions, tensorRank, tensorName, tensorPart, tensorTranspose, 
 tensorDimensions[t_] := Replace[TensorDimensions[t], Except[_List] :> {}]
 
 tensorRank[t_] := Replace[TensorRank[t], Except[_Integer] -> 0]
+
+tensorSymmetry[t_] := Replace[TensorSymmetry[t], Except[_Symmetric | _Antisymmetric | _ZeroSymmetric] -> {}]
 
 
 TensorSymbol = VectorSymbol | MatrixSymbol | ArraySymbol

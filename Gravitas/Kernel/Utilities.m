@@ -1,13 +1,22 @@
 Package["WolframInstitute`Gravitas`Utilities`"]
 
 PackageExport[ToList]
+PackageExport[FreshVariable]
+PackageExport[CanonicalSymbolName]
 PackageExport[EinsteinSummation]
-
 
 ToList = Developer`ToList
 
 
-EinsteinSummation[in_List, arrays_] := Module[{
+FreshVariable[name_String] := Block[{$ModuleNumber = 1}, ToExpression[RowBox[{"Module", "[", "{", name, "}", ",", name, "]"}]]]
+
+
+CanonicalSymbolName[s_Symbol ? AtomQ] := With[{t = Unevaluated @@ ResourceFunction["UnformalizeSymbols"][s, "DeferQ" -> True]}, SymbolName[t]]
+
+CanonicalSymbolName[s_] := s
+
+
+EinsteinSummation[in_List | (in_List -> Automatic), arrays_] := Module[{
 	res = isum[in -> Cases[Tally @ Flatten @ in, {_, 1}][[All, 1]], arrays]
 },
 	res /; res =!= $Failed

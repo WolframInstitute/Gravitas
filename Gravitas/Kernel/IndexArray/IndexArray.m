@@ -30,7 +30,7 @@ IndexArray[ia_ ? IndexArrayQ, arg1_, arg2_, args___] := With[{shape = Shape[arg1
         ShapeQ[shape],
         IndexArray[IndexArray[ia["Tensor"], shape, ia["Parameters"], ia["Assumptions"], ia["Name"]], arg2, args],
         MatchQ[arg1, _List] && MatchQ[arg2, _List],
-        IndexArray[ia["Tensor"], ia["Shape"], arg1, arg2, ia["Name"]],
+        IndexArray[ia["Tensor"], ia["Shape"], arg1, arg2, args, ia["Name"]],
         MatchQ[arg1, _List],
         IndexArray[ia["Tensor"], ia["Shape"], arg1, ia["Assumptions"], arg2, args],
         True,
@@ -63,8 +63,7 @@ IndexArray[tensor_, shape_Shape ? ShapeQ] := IndexArray[tensor, shape, {}, {}]
 
 IndexArray[tensor_, shape_Shape ? ShapeQ, params_List] := IndexArray[tensor, shape, params, {}]
 
-IndexArray[tensor_, shape_Shape ? ShapeQ, name : Except[_List]] :=
-    IndexArray[tensor, shape, {}, {}, name]
+IndexArray[tensor_, shape_Shape ? ShapeQ, name : Except[_List]] := IndexArray[tensor, shape, {}, {}, name]
 
 
 ia_IndexArray /; System`Private`HoldNotValidQ[ia] && IndexArrayQ[Unevaluated[ia]] :=
@@ -100,7 +99,7 @@ Prop[ia_, "Name"] := tensorName[ia["Array"]]
 
 Prop[ia_, "Dimension"] := Times @@ ia["Dimensions"]
 
-Prop[ia_, "Symmetry"] := TensorSymmetry[ia["Array"]]
+Prop[ia_, "Symmetry"] := tensorSymmetry[ia["Array"]]
 
 
 Prop[ia_, "Symbol"] := Row[{
@@ -129,6 +128,7 @@ Prop[ia_, "Icon", limit_Integer : 10] := MatrixPlot[
         Replace[
             Normal[ia["Array"]],
             {
+                v_ ? VectorQ :> If[ia["SignedDimensions"][[1]] > 0, Map[List], List] @ v[[;; UpTo[limit]]],
                 m_ ? MatrixQ :> m[[;; UpTo[limit], ;; UpTo[limit]]],
                 t_ ? ArrayQ :> ArrayReshape[t, squareDimensions[ia["Dimension"], limit]],
                 _ :> BlockRandom[RandomReal[{-1, 1}, squareDimensions[ia["Dimension"], limit]], RandomSeeding -> Hash[ia]]
@@ -148,7 +148,7 @@ Prop[_, prop_String, ___] := Missing[prop]
 
 (* UpValues *)
 
-IndexArray /: Normal[ia_IndexArray ? IndexArrayQ] := ia["Tensor"]
+IndexArray /: Normal[ia_IndexArray ? IndexArrayQ] := Normal[ia["Tensor"]]
 
 IndexArray /: Dimensions[ia_IndexArray ? IndexArrayQ] := ia["Dimensions"]
 
@@ -168,7 +168,7 @@ IndexArray /: Inverse[ia_IndexArray ? IndexArrayQ] /; SquareMatrixQ[ia] := Index
 ia : IndexArray[t_, arg_, params_, assumptions_List, args___] /; ! IndexArrayQ[Unevaluated[ia]] := With[{shape = Shape[arg], dims = Assuming[assumptions, tensorDimensions[t]]},
     If[ ShapeQ[shape],
         IndexArray[If[dims === shape["Dimensions"], t, setDimensions[t, shape["Dimensions"]]], shape, ToList[params], assumptions, args],
-        IndexArray[t, dims, ToList[params], assumptions, args]
+        IndexArray[t, Shape[dims], ToList[params], assumptions, args]
     ]
 ]
 
@@ -177,15 +177,15 @@ ia : IndexArray[t_, arg_, params_, name_, args___] /; ! IndexArrayQ[Unevaluated[
 ia : IndexArray[t_, arg_, args___] /; ! IndexArrayQ[Unevaluated[ia]] := With[{shape = Shape[arg]},
     If[ ShapeQ[shape],
         IndexArray[If[tensorDimensions[t] === shape["Dimensions"], t, setDimensions[t, shape["Dimensions"]]], shape, args],
-        IndexArray[t, tensorDimensions[t], arg, args]
+        IndexArray[t, Shape[tensorDimensions[t]], arg, args]
     ]
 ]
 
 IndexArray[t_] := IndexArray[t, tensorDimensions[t]]
 
-ia : IndexArray[_, shape_, ___] /; ! IndexArrayQ[Unevaluated[ia]] := Which[
+ia : IndexArray[_, shape_, __] /; ! IndexArrayQ[Unevaluated[ia]] := Which[
     ! ShapeQ[shape],
-    Failure["IndexArray", <|"MessageTemplate" -> "Wrong shape specification: ``", "MessageParameters" -> shape|>]
+    Failure["IndexArray", <|"MessageTemplate" -> "Wrong shape specification: ``", "MessageParameters" -> {shape}|>]
     ,
     True,
     Failure["IndexArray", <|"MessageTemplate" -> "Failed to construct ``", "MessageParameters" -> HoldForm[ia]|>]
@@ -198,7 +198,7 @@ ia_IndexArray[is__] := With[{indices = ia["Indices"]}, {
     js = MapThread[If[MatchQ[#2, _Integer | All], #2, Lookup[#1, Key[#2]]] &, {Map[First] @* PositionIndex /@ Through[Take[indices, UpTo[Length[{is}]]]["Indices"]], {is}}]
 },
     IndexArray[
-        tensorPart[ia["Tensor"], Replace[js, _Missing -> All, 1]],
+        tensorPart[ia["Array"], Replace[js, _Missing -> All, 1]],
         MapThread[
             If[ IntegerQ[#2],
                 Dimension[#1, Mod[#2, #1["Dimension"], 1]],
@@ -215,16 +215,19 @@ ia_IndexArray[is__] := With[{indices = ia["Indices"]}, {
 
 ia_IndexArray[] := ia
 
-ia_IndexArray[is__] := Block[{indices = ia["Indices"], n, names, repl, perm, renames},
+ia_IndexArray[is__] := Block[{indices = ia["Indices"], indexPositions = ia["FreeIndexPositions"], n, names, repl, perm, renames},
     n = Length[{is}];
-    names = PositionIndex[Through[indices["Name"]]];
-    repl = MapThread[Lookup[names, Key[CanonicalSymbolName[#1]], Missing[#2, #3]] -> {#2, #3} &, {{is}, List /@ Take[ia["FreeIndexPositions"], UpTo[n]], List /@ Range[n]}];
-    repl = Catenate @ Values @ GroupBy[repl, First, Prepend[First[#]] @ Map[Missing @@ #[[2]] -> #[[2]] &, Rest[#]] &];
-    perm = FindPermutation @ Map[If[MissingQ[#], Replace[repl] @ Replace[repl] @ First[#], #] &, repl[[All, 1]]];
-    renames = Cases[repl, (Missing[k_, l_] -> _) :> k -> Extract[{is}, l]];
+    names = First /@ PositionIndex[Through[indices["Name"]]];
+    repl = MapThread[Lookup[names, Key[CanonicalSymbolName[#1]]] -> {#2, #3} &, {{is}, Take[indexPositions, UpTo[n]], Range[n]}];
+    repl = Catenate @ Values @ GroupBy[repl, First, Prepend[First[#]] @ Map[Missing[] -> #[[2]] &, Rest[#]] &];
+    perm = FindPermutation[Join[#, DeleteElements[indexPositions, #]]] & @ Map[If[MissingQ[#[[1]]], Replace[repl][Replace[repl] @ #[[2, 1]]], #[[1]]] &, repl];
+    renames = Cases[repl, (_Missing -> {k_, l_}) :> k -> {is}[[l]]];
     IndexArray[
-        tensorTranspose[ia["Tensor"], perm],
-        SubsetMap[MapThread[If[MatchQ[#2, - _], Dimension[#1, - #2]["Lower"], Dimension[##]["Upper"]] &, {#, renames[[All, 2]]}] &, Permute[indices, perm], renames[[All, 1]]],
+        tensorTranspose[ia["Array"], perm],
+        Permute[
+            SubsetMap[MapThread[If[MatchQ[#2, - _], Dimension[#1, - #2]["Lower"], Dimension[##]["Upper"]] &, {#, renames[[All, 2]]}] &, indices, renames[[All, 1]]],
+            perm
+        ],
         ia["Parameters"], ia["Assumptions"], ia["Name"]
     ]
 ]

@@ -1,15 +1,16 @@
 Package["WolframInstitute`Gravitas`IndexArray`"]
 
+PackageImport["WolframInstitute`Gravitas`Utilities`"]
+
 PackageExport[DimensionQ]
 PackageExport[Dimension]
 
-PackageScope[CanonicalSymbolName]
 PackageScope[DimensionName]
 PackageScope[DimensionSymbol]
 
 
 
-ClearAll[DimensionQ, Dimension, DimensionName, CanonicalSymbolName, Prop]
+ClearAll[DimensionQ, Dimension, DimensionName, Prop]
 
 (* Validation *)
 
@@ -26,10 +27,6 @@ DimensionName[i_, Automatic] := DimensionName[i, CharacterRange["i", "z"]]
 
 DimensionName[i_] := DimensionName[i, Automatic]
 
-
-CanonicalSymbolName[s_Symbol ? AtomQ] := With[{t = Unevaluated @@ ResourceFunction["UnformalizeSymbols"][s, "DeferQ" -> True]}, SymbolName[t]]
-
-CanonicalSymbolName[s_] := s
 
 
 
@@ -53,7 +50,7 @@ Dimension[d_Dimension ? DimensionQ] := d
 
 
 Dimension["Properties"] = Sort @ {
-    "SignedDimension", "Dimension", "Size", "Name", "Indices", "Index", "IndexName", "FreeQ",
+    "SignedDimension", "Dimension", "Size", "Name", "SignedName", "Indices", "Index", "IndexName", "FreeQ",
     "Properties"
 }
 
@@ -63,11 +60,13 @@ Prop[d : Dimension[n_, ___], "SignedDimension"] := With[{index = d["Index"]}, If
 
 Prop[d_, "Dimension" | "Size"] := Abs[d["SignedDimension"]]
 
-Prop[d_, "Valence" | "Sign"] := Sign[d["SignedDimension"]]
+Prop[d_, "Variance" | "Sign"] := Sign[d["SignedDimension"]]
 
 Prop[Dimension[_, name_, ___], "Name"] := CanonicalSymbolName[name]
 
 Prop[_, "Name"] := None
+
+Prop[d_, "SignedName"] := d["Sign"] * d["Name"]
 
 Prop[Dimension[n_, args___], "Lower"] := Dimension[- Abs[n], args]
 
