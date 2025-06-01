@@ -236,7 +236,7 @@ ia_IndexArray[rules : (_Integer -> _) ..] := With[{r = ia["Rank"]}, ia[[##]] & @
 (* Formatting *)
 
 IndexArray /: MakeBoxes[ia_IndexArray /; IndexArrayQ[Unevaluated[ia]], TraditionalForm] := With[{
-    boxes = ToBoxes[Style[ia["Symbol"], "ShowStringCharacters" -> False], TraditionalForm]
+    boxes = ToBoxes[Normal[ia], TraditionalForm]
 },
     InterpretationBox[
         boxes,
