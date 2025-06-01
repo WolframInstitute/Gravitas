@@ -517,7 +517,7 @@ Scan[
     Function[f,
         MetricTensor /: f[mt_MetricTensor ? MetricTensorQ, args___] := f[mt["IndexTensor"], args]
     ],
-    {Normal, Dimensions, SquareMatrixQ}
+    {Normal, Dimensions, SquareMatrixQ, D}
 ]
 
 Scan[
