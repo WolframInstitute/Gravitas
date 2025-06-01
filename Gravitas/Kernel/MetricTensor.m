@@ -446,10 +446,10 @@ Prop[mt_, "Type"] := Switch[
     mt["Indices"]
     ,
     {True, True},
-    "Covariant"
+    "Contravariant"
     ,
     {False, False},
-    "Contravariant"
+    "Covariant"
     ,
     _,
     "Mixed"

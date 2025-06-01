@@ -19,6 +19,10 @@ Shape[ds__Integer] := Shape @@ MapIndexed[Dimension[#1, DimensionName[#2[[1]]]] 
 
 Shape[ds : {(_Integer | _Dimension) ...}] := Shape @@ ds
 
+Shape[ds : {__Integer}, names_List] /; Length[ds] === Length[names] := With[{nameSigns = Replace[names, {- x_ :> {-1, x}, x_ :> {1, x}}, 1]},
+    Shape @ MapThread[Dimension[#1 #2[[1]], #2[[2]]] &, {ds, nameSigns}]
+]
+
 Shape[s_Shape] := s
 
 

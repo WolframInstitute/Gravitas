@@ -8,7 +8,7 @@ PackageExport[IndexArray]
 
 
 
-ClearAll[IndexArrayQ, IndexArrayQ, IndexArray, Prop]
+ClearAll[IndexArrayQ, IndexArray, Prop]
 
 (* Validation *)
 
@@ -102,25 +102,33 @@ Prop[ia_, "Dimension"] := Times @@ ia["Dimensions"]
 Prop[ia_, "Symmetry"] := tensorSymmetry[ia["Array"]]
 
 
-Prop[ia_, "Symbol"] := Row[{
-    Tooltip[Replace[ia["Name"], None -> \[FormalCapitalT]], ia["SignedDimensions"]],
-    Splice @ Map[
+Prop[ia_, "Symbol"] := With[{
+    indices = Map[
         With[{dim = #["SignedDimension"], name = #["IndexName"]},
-        Tooltip[
-            Which[
-                dim > 0, Superscript["", name],
-                dim < 0, Subscript["", name],
-                True, Superscript["", Style[name, Opacity[.3]]]
-            ],
-            #["View"]
-        ]
-    ] &,
-    ia["Shape"]["Indices"]
+            Tooltip[
+                Which[
+                    dim > 0, Superscript["", name],
+                    dim < 0, Subscript["", name],
+                    True, Superscript["", Style[name, Opacity[.3]]]
+                ],
+                #["View"]
+            ]
+        ] &,
+        ia["Shape"]["Indices"]
+    ],
+    name = ia["Name"]
+},
+    If[ MatchQ[name, _Function],
+        name @@ indices,
+        Row[{
+            Tooltip[Replace[name, None -> \[FormalCapitalT]], ia["SignedDimensions"]],
+            Splice @ indices
+        }]
     ]
-}]
+]
    
 
-squareDimensions[d_, limit_ : 10] := With[{w = Floor[Sqrt[d]]}, Clip[{w, If[w == 0, 0, d / w]}, {1, limit}]]
+squareDimensions[d_, limit_ : 10] := With[{w = Floor[Sqrt[d]]}, Clip[{w, If[w == 0, 0, Ceiling[d / w]]}, {1, limit}]]
 
 Prop[ia_, "Icon", limit_Integer : 10] := MatrixPlot[
     Map[
@@ -148,6 +156,8 @@ Prop[_, prop_String, ___] := Missing[prop]
 
 (* UpValues *)
 
+applyIndexArray[f_, ia_IndexArray ? IndexArrayQ] := IndexArray[f[ia["Array"]], ia["Shape"], ia["Parameters"], ia["Assumptions"], ia["Name"]]
+
 IndexArray /: Normal[ia_IndexArray ? IndexArrayQ] := Normal[ia["Tensor"]]
 
 IndexArray /: Dimensions[ia_IndexArray ? IndexArrayQ] := ia["Dimensions"]
@@ -162,13 +172,15 @@ IndexArray /: Inverse[ia_IndexArray ? IndexArrayQ] /; SquareMatrixQ[ia] := Index
     ia["Name"]
 ]
 
+IndexArray /: D[ia_IndexArray ? IndexArrayQ, x_] := applyIndexArray[D[#, x] &, ia]
+
 
 (* General fallback *)
 
 ia : IndexArray[t_, arg_, params_, assumptions_List, args___] /; ! IndexArrayQ[Unevaluated[ia]] := With[{shape = Shape[arg], dims = Assuming[assumptions, tensorDimensions[t]]},
     If[ ShapeQ[shape],
         IndexArray[If[dims === shape["Dimensions"], t, setDimensions[t, shape["Dimensions"]]], shape, ToList[params], assumptions, args],
-        IndexArray[t, Shape[dims], ToList[params], assumptions, args]
+        IndexArray[t, Shape[dims, arg], ToList[params], assumptions, args]
     ]
 ]
 
@@ -177,24 +189,24 @@ ia : IndexArray[t_, arg_, params_, name_, args___] /; ! IndexArrayQ[Unevaluated[
 ia : IndexArray[t_, arg_, args___] /; ! IndexArrayQ[Unevaluated[ia]] := With[{shape = Shape[arg]},
     If[ ShapeQ[shape],
         IndexArray[If[tensorDimensions[t] === shape["Dimensions"], t, setDimensions[t, shape["Dimensions"]]], shape, args],
-        IndexArray[t, Shape[tensorDimensions[t]], arg, args]
+        With[{argShape = Shape[tensorDimensions[t], arg]}, If[ShapeQ[argShape], IndexArray[t, argShape, args], IndexArray[t, Shape[tensorDimensions[t]], arg, args]]]
     ]
 ]
 
 IndexArray[t_] := IndexArray[t, tensorDimensions[t]]
 
-ia : IndexArray[_, shape_, __] /; ! IndexArrayQ[Unevaluated[ia]] := Which[
+(* ia : IndexArray[_, shape_, args___] /; ! IndexArrayQ[Unevaluated[ia]] := Which[
     ! ShapeQ[shape],
     Failure["IndexArray", <|"MessageTemplate" -> "Wrong shape specification: ``", "MessageParameters" -> {shape}|>]
     ,
     True,
     Failure["IndexArray", <|"MessageTemplate" -> "Failed to construct ``", "MessageParameters" -> HoldForm[ia]|>]
-]
+] *)
 
 
 (* Index juggling *)
 
-ia_IndexArray[is__] := With[{indices = ia["Indices"]}, {
+ia_IndexArray[[is__]] ^:= With[{indices = ia["Indices"]}, {
     js = MapThread[If[MatchQ[#2, _Integer | All], #2, Lookup[#1, Key[#2]]] &, {Map[First] @* PositionIndex /@ Through[Take[indices, UpTo[Length[{is}]]]["Indices"]], {is}}]
 },
     IndexArray[
@@ -213,26 +225,12 @@ ia_IndexArray[is__] := With[{indices = ia["Indices"]}, {
     ] /; AnyTrue[js, IntegerQ]
 ]
 
-ia_IndexArray[] := ia
+ia_IndexArray[[]] ^:= ia
 
-ia_IndexArray[is__] := Block[{indices = ia["Indices"], indexPositions = ia["FreeIndexPositions"], n, names, repl, perm, renames},
-    n = Length[{is}];
-    names = First /@ PositionIndex[Through[indices["Name"]]];
-    repl = MapThread[Lookup[names, Key[CanonicalSymbolName[#1]]] -> {#2, #3} &, {{is}, Take[indexPositions, UpTo[n]], Range[n]}];
-    repl = Catenate @ Values @ GroupBy[repl, First, Prepend[First[#]] @ Map[Missing[] -> #[[2]] &, Rest[#]] &];
-    perm = FindPermutation[Join[#, DeleteElements[indexPositions, #]]] & @ Map[If[MissingQ[#[[1]]], Replace[repl][Replace[repl] @ #[[2, 1]]], #[[1]]] &, repl];
-    renames = Cases[repl, (_Missing -> {k_, l_}) :> k -> {is}[[l]]];
-    IndexArray[
-        tensorTranspose[ia["Array"], perm],
-        Permute[
-            SubsetMap[MapThread[If[MatchQ[#2, - _], Dimension[#1, - #2]["Lower"], Dimension[##]["Upper"]] &, {#, renames[[All, 2]]}] &, indices, renames[[All, 1]]],
-            perm
-        ],
-        ia["Parameters"], ia["Assumptions"], ia["Name"]
-    ]
-]
+ia_IndexArray[rules : (_Integer -> _) ..] := With[{r = ia["Rank"]}, ia[[##]] & @@ ReplacePart[ConstantArray[All, r], Cases[{rules}, (k_ -> _) /; 0 < k <= r]]]
 
-ia_IndexArray[rules : (_Integer -> _) ..] := With[{r = ia["Rank"]}, ia @@ ReplacePart[ConstantArray[All, r], Cases[{rules}, (k_ -> _) /; 0 < k <= r]]]
+
+(ia : _IndexArray ? IndexArrayQ)[is___] := WolframInstitute`Gravitas`IndexJuggling[ia, {is}]
 
 
 (* Formatting *)

@@ -3,7 +3,13 @@ Package["WolframInstitute`Gravitas`Utilities`"]
 PackageExport[ToList]
 PackageExport[FreshVariable]
 PackageExport[CanonicalSymbolName]
+PackageExport[SignedSymbolName]
 PackageExport[EinsteinSummation]
+
+
+
+ClearAll[ToList, FreshVariable, CanonicalSymbolName, SignedSymbolName, EinsteinSummation]
+
 
 ToList = Developer`ToList
 
@@ -13,7 +19,14 @@ FreshVariable[name_String] := Block[{$ModuleNumber = 1}, ToExpression[RowBox[{"M
 
 CanonicalSymbolName[s_Symbol ? AtomQ] := With[{t = Unevaluated @@ ResourceFunction["UnformalizeSymbols"][s, "DeferQ" -> True]}, SymbolName[t]]
 
+CanonicalSymbolName[- s_] := CanonicalSymbolName[s]
+
 CanonicalSymbolName[s_] := s
+
+
+SignedSymbolName[- s_] := - SignedSymbolName[s]
+
+SignedSymbolName[s_] := CanonicalSymbolName[s]
 
 
 EinsteinSummation[in_List | (in_List -> Automatic), arrays_] := Module[{
