@@ -23,13 +23,12 @@ Shape[ds : {__Integer}, names_List] /; Length[ds] === Length[names] := With[{nam
     Shape @ MapThread[Dimension[#1 #2[[1]], #2[[2]]] &, {ds, nameSigns}]
 ]
 
+Shape[names_List] := Shape[Dimension /@ names]
+
 Shape[s_Shape] := s
 
 
-Shape["Properties"] = Sort @ {
-    "Indices", "FreeIndices", "FreeIndexPositions", "SignedDimensions", "Dimensions", "Rank", "Size", "Variance", "Names",
-    "Properties"
-}
+(* Properties *)
 
 (s_Shape ? ShapeQ)[prop_String, args___] := Prop[s, prop, args]
 
@@ -39,15 +38,19 @@ Prop[s_, "FreeIndices"] := Select[s["Indices"], #["FreeQ"] &]
 
 Prop[s_, "SignedDimensions"] := Through[s["FreeIndices"]["SignedDimension"]]
 
+Prop[s_, "Signs"] := Through[s["FreeIndices"]["Sign"]]
+
+Prop[s_, "Dimensions"] := Through[s["FreeIndices"]["Dimension"]]
+
 Prop[s_, "FreeIndexPositions"] := Select[s["Indices"], (#["FreeQ"] &) -> "Index"]
 
-Prop[s_, "Dimensions"] := Abs[s["SignedDimensions"]]
+Prop[s_, "Dimension"] := Times @@ s["Dimensions"]
 
-Prop[s_, "Rank"] := Length[s["SignedDimensions"]]
+Prop[s_, "Rank"] := Length[s["FreeIndices"]]
 
 Prop[s_, "Size"] := Length[s["Indices"]]
 
-Prop[s_, "Variance"] := Thread[s["SignedDimensions"] > 0]
+Prop[s_, "Variance"] := Thread[s["Signs"] == 1]
 
 Prop[s_, "Names", alphabet_ : Automatic] :=
     MapIndexed[
@@ -64,12 +67,19 @@ Prop[s_, "Names", alphabet_ : Automatic] :=
 
 Prop[_, prop_String, ___] := Missing[prop]
 
+
+Shape["Properties"] = Sort @ Cases[DownValues[Prop], HoldPattern[_[Prop[_, prop_String, ___]] :> _] :> prop]
+
+
+
+(* Formatting *)
+
 Shape /: MakeBoxes[s_Shape ? ShapeQ, form_] := With[{
     box = ToBoxes[
         Row[
             MapThread[
                 Tooltip[
-                    DimensionSymbol[#1["SignedDimension"], #2],
+                    DimensionSymbol[#1["Sign"], #2],
                     #1["View"]
                 ] &,
                 {s["Indices"], s["Names"]}
@@ -80,3 +90,4 @@ Shape /: MakeBoxes[s_Shape ? ShapeQ, form_] := With[{
 },
     InterpretationBox[box, s]
 ]
+

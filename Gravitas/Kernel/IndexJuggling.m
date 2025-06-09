@@ -3,20 +3,20 @@ Package["WolframInstitute`Gravitas`"]
 
 PackageImport["WolframInstitute`Gravitas`Utilities`"]
 PackageImport["WolframInstitute`Gravitas`IndexArray`"]
-PackageImport["WolframInstitute`Gravitas`IndexArray`TensorUtilities`"]
+PackageImport["WolframInstitute`Gravitas`IndexArray`ArrayUtilities`"]
 
 PackageExport[IndexPart]
 PackageExport[IndexContract]
 PackageExport[IndexJuggling]
 
 
-IndexPart[it_IndexTensor, {is__}] := Block[{
+IndexPart[it : _IndexArray | _IndexTensor, {is__}] := Block[{
     indices = it["Indices"], js, newArray
 },
     js = MapThread[If[MatchQ[#2, _Integer | All], #2, Lookup[#1, Key[#2]]] &, {Map[First] @* PositionIndex /@ Through[Take[indices, UpTo[Length[{is}]]]["Indices"]], {is}}];
     (
         newArray = IndexArray[
-            tensorPart[it["Array"], Replace[js, _Missing -> All, 1]],
+            ArrayPart[it["Array"], Replace[js, _Missing -> All, 1]],
             MapThread[
                 If[ IntegerQ[#2],
                     Dimension[#1, Mod[#2, #1["Dimension"], 1]],
@@ -29,13 +29,13 @@ IndexPart[it_IndexTensor, {is__}] := Block[{
             ],
             it["Parameters"], it["Assumptions"], it["Name"]
         ];
-        IndexTensor[newArray, it["Metrics"]]
+        If[IndexArrayQ[it], newArray, IndexTensor[newArray, it["Metrics"]]]
      ) /; AnyTrue[js, IntegerQ]
 ]
 
 IndexPart[it_IndexTensor, {}] := it
 
-IndexPart[it_IndexTensor, rules : (_Integer -> _) ..] := With[{r = it["Rank"]}, it[[##]] & @@ ReplacePart[ConstantArray[All, r], Cases[{rules}, (k_ -> _) /; 0 < k <= r]]]
+IndexPart[it_IndexTensor, rules : {(_Integer -> _) ..}] := With[{r = it["Rank"]}, it[[##]] & @@ ReplacePart[ConstantArray[All, r], Cases[rules, (k_ -> _) /; 0 < k <= r]]]
 
 
 
@@ -82,7 +82,7 @@ IndexContract[tensors : {__ ? IndexTensorQ}, output : _List | Automatic : Automa
 	];
     If[prop === "Arrays", Return[reindexedArrays]];
     newArray = IndexArray[
-        ConfirmQuiet[EinsteinSummation[Map[#["Name"] &, Through[reindexedArrays["FreeIndices"]], {2}] -> output, Through[reindexedArrays["Array"]]]],
+        EinsteinSummation[Map[#["Name"] &, Through[reindexedArrays["FreeIndices"]], {2}] -> output, Through[reindexedArrays["Array"]]],
         newShape,
         DeleteDuplicates[Catenate[Through[tensors["Parameters"]]]],
         DeleteDuplicates[Catenate[Through[tensors["Assumptions"]]]],
@@ -144,7 +144,7 @@ IndexJuggling[it : _ ? IndexTensorQ | _ ? IndexArrayQ, newIndices_List] := Enclo
     newShape = Permute[indices, perm];
     rules = Thread[indexPositions -> Permute[indexPositions, InversePermutation[perm]]];
     newArray = IndexArray[
-        tensorTranspose[it["Array"], perm],
+        ArrayTranspose[it["Array"], perm],
         newShape,
         it["Parameters"], it["Assumptions"], it["Name"]
     ];

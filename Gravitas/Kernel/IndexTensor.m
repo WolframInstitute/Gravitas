@@ -2,7 +2,7 @@ Package["WolframInstitute`Gravitas`"]
 
 PackageImport["WolframInstitute`Gravitas`Utilities`"]
 PackageImport["WolframInstitute`Gravitas`IndexArray`"]
-PackageImport["WolframInstitute`Gravitas`IndexArray`TensorUtilities`"]
+PackageImport["WolframInstitute`Gravitas`IndexArray`ArrayUtilities`"]
 
 PackageExport[IndexTensorQ]
 PackageExport[IndexTensor]
@@ -15,7 +15,7 @@ ClearAll[indexTensorQ, IndexTensorQ, IndexTensor, Prop]
 
 (* Validation *)
 
-metricQ[ia_] := IndexArrayQ[ia] && MatchQ[ia["SignedDimensions"], {x_, x_}]
+metricQ[ia_] := IndexArrayQ[ia] && With[{n = Length[ia["Parameters"]]}, MatchQ[ia["SignedDimensions"], {n, n} | {- n, - n}]]
 
 indexTensorQ[IndexTensor[ia_IndexArray, gs : {({__Integer ? Positive} -> _IndexArray | None) ...}, ___]] :=
     IndexArrayQ[ia] && AllTrue[gs[[All, 2]], # === None || metricQ[#] &] &&
@@ -58,7 +58,7 @@ Prop[IndexTensor[_, g_] ? IndexTensorQ, "Metrics"] := g
 
 Prop[IndexTensor[g_] ? IndexTensorQ, "Metrics"] := Sequence[]
 
-Prop[IndexTensor[_], "MetricQ"] := True
+Prop[it : IndexTensor[_], "MetricQ"] := metricQ[it["IndexArray"]]
 Prop[_, "MetricQ"] := False
 
 Prop[it_, "MetricRules"] := With[{metrics = If[it["MetricQ"], {Range[it["Rank"]] -> it["IndexArray"]}, it["Metrics"]]},
@@ -117,13 +117,14 @@ Scan[
 ]
 
 
-IndexTensor /: D[it_IndexTensor, i_] /; it["MetricQ"] :=
+IndexTensor /: D[it_IndexTensor, i_] /; it["MetricQ"] := D[it, i, it]
+
+IndexTensor /: D[it_IndexTensor, i_, g_ ? IndexTensorQ /; g["MetricQ"]] :=
  	IndexTensor[
-  		Transpose[D[it["Array"], #] & /@ it["Coordinates"], {3, 1, 2}],
-  		Append[Dimension[- Length[it["Coordinates"]], i]] @ it["Indices"],
-  		it["Coordinates"], it["Assumptions"],
-  		Row[{"\[PartialD]", it["Name"]}],
-  		it
+  		Inactive[D][it["Array"], {g["Coordinates"]}],
+  		Append[PartialD /@ it["Indices"], Dimension[- Length[it["Coordinates"]], i]],
+  		it["Coordinates"], it["Assumptions"], it["Name"],
+  		Append[it["MetricRules"], {it["Size"] + 1} -> g["IndexArray"]]
   	]
 
 IndexTensor /: Times[it_IndexTensor ? IndexTensorQ, xs___] :=

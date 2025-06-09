@@ -1,7 +1,7 @@
 Package["WolframInstitute`Gravitas`"]
 
 PackageImport["WolframInstitute`Gravitas`IndexArray`"]
-PackageImport["WolframInstitute`Gravitas`IndexArray`TensorUtilities`"]
+PackageImport["WolframInstitute`Gravitas`IndexArray`ArrayUtilities`"]
 
 PackageExport[MetricTensorQ]
 PackageExport[MetricTensor]
@@ -361,7 +361,7 @@ MetricTensor[name : _String[___]] := MetricTensor[name, {}]
 
 MetricTensor[{name_String, params___}, args___] := MetricTensor[name[params], args]
 
-MetricTensor[matrix_ ? squareMatrixQ] := MetricTensor[matrix, Superscript[x, #] & /@ Range[tensorDimensions[matrix][[1]]]]
+MetricTensor[matrix_ ? squareMatrixQ] := MetricTensor[matrix, Superscript[x, #] & /@ Range[ArrayDimensions[matrix][[1]]]]
 
 MetricTensor[vector_ ? VectorQ] := MetricTensor[DiagonalMatrix[vector]]
 
