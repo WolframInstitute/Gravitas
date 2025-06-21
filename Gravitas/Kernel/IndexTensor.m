@@ -64,7 +64,7 @@ Prop[_, "MetricQ"] := False
 Prop[it_, "MetricRules"] := With[{metrics = If[it["MetricQ"], {Range[it["Rank"]] -> it["IndexArray"]}, it["Metrics"]]},
     Join[
         MapAt[If[#["SignedDimensions"][[1]] > 0, Inverse[#], #] &, metrics, {All, 2}],
-        Values @ GroupBy[Thread[# -> it["Dimensions"][[#]]], #[[2]] &, #[[All, 1]] -> IndexArray[IdentityMatrix[#[[1, 2]]], "I"] &] & @
+        Values @ GroupBy[Thread[# -> it["Dimensions"][[#]]], #[[2]] &, #[[All, 1]] -> With[{dim = #[[1, 2]]}, Inverse @ IndexArray[IdentityMatrix[dim], Automatic, Array[\[FormalI], dim], "I"]] &] & @
             Complement[it["FreeIndexPositions"], Catenate[metrics[[All, 1]]]]
     ]
 ]
@@ -113,7 +113,7 @@ Scan[
     Function[f,
         IndexTensor /: f[it_IndexTensor ? IndexTensorQ, args___] := If[it["MetricQ"], IndexTensor[#], IndexTensor[#, it["Metrics"]]] & @ f[it["IndexArray"], args]
     ],
-    {Inverse}
+    {Inverse, Transpose}
 ]
 
 
@@ -152,6 +152,12 @@ IndexTensor /: Plus[its__IndexTensor] := Block[{
         ]
     ) /; SameQ @@ Sort /@ Map[{#["Name"], #["Dimension"]} &, indices, {2}]
 ]
+
+
+IndexTensor /: Equal[it__IndexTensor ? IndexTensorQ] := Equal @@ Through[{it}["IndexArray"]] &&
+    With[{metrics = Through[{it}["MetricRules"]]},
+        And @@ Merge[KeyUnion[Catenate /@ Map[Thread] /@ metrics], Apply[Equal]]
+    ]
 
 
 (* Formatting *)

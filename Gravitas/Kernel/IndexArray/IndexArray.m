@@ -175,6 +175,15 @@ IndexArray /: Inverse[ia_IndexArray ? IndexArrayQ] /; SquareMatrixQ[ia] := Index
     ia["Name"]
 ]
 
+IndexArray /: Transpose[ia_IndexArray ? IndexArrayQ, perm : {___Integer} | _ ? PermutationCyclesQ : {2, 1}] :=
+    IndexArray[
+        Transpose[ia["Array"], perm],
+        Permute[ia["Shape"], perm],
+        ia["Parameters"],
+        ia["Assumptions"],
+        ia["Name"]
+    ]
+
 IndexArray /: D[ia_IndexArray ? IndexArrayQ, i_] := With[{params = ia["Parameters"]},
  	IndexArray[
   		D[ia["Array"], {params}],
@@ -207,23 +216,21 @@ IndexArray /: Plus[ias__IndexArray] := Block[{
     ) /; SameQ @@ Sort /@ Map[{#["Name"], #["Dimension"]} &, indices, {2}]
 ]
 
+IndexArray /: Equal[ia__IndexArray ? IndexArrayQ] := Equal @@ Through[{ia}["Array"]]
+
 
 (* General fallback *)
 
-ia : IndexArray[t_, arg_, params_, assumptions_List, args___] /; ! IndexArrayQ[Unevaluated[ia]] := With[{shape = Shape[arg], dims = Assuming[assumptions, ArrayDimensions[t]]},
-    If[ ShapeQ[shape],
-        IndexArray[If[dims === shape["Dimensions"], t, setDimensions[t, shape["Dimensions"]]], shape, ToList[params], assumptions, args],
-        IndexArray[t, Shape[dims, arg], ToList[params], assumptions, args]
-    ]
+ia : IndexArray[t_, arg_, params_, assumptions_List, args___] /; ! IndexArrayQ[Unevaluated[ia]] := Enclose @ With[
+    {dims = Assuming[assumptions, ArrayDimensions[t]]},
+    {shape = ConfirmBy[Shape[Shape[dims], arg], ShapeQ]},
+    IndexArray[t, shape, ToList[params], assumptions, args]
 ]
 
 ia : IndexArray[t_, arg_, params_, name_, args___] /; ! IndexArrayQ[Unevaluated[ia]] := IndexArray[t, arg, params, {}, name, args]
 
-ia : IndexArray[t_, arg_, args___] /; ! IndexArrayQ[Unevaluated[ia]] := With[{shape = Shape[arg]},
-    If[ ShapeQ[shape],
-        IndexArray[If[ArrayDimensions[t] === shape["Dimensions"], t, setDimensions[t, shape["Dimensions"]]], shape, args],
-        With[{argShape = Shape[ArrayDimensions[t], arg]}, If[ShapeQ[argShape], IndexArray[t, argShape, args], IndexArray[t, Shape[ArrayDimensions[t]], arg, args]]]
-    ]
+ia : IndexArray[t_, arg_, args___] /; ! IndexArrayQ[Unevaluated[ia]] := Enclose @ With[{tensorShape = Shape[ArrayDimensions[t]]}, {shape = Shape[tensorShape, arg]},
+    If[ShapeQ[shape], IndexArray[t, shape, args], IndexArray[t, tensorShape, arg, args]]
 ]
 
 IndexArray[t_] := IndexArray[t, ArrayDimensions[t]]

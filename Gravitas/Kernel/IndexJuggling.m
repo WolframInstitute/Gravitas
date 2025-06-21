@@ -40,7 +40,7 @@ IndexPart[it_IndexTensor, rules : {(_Integer -> _) ..}] := With[{r = it["Rank"]}
 
 
 IndexContract[tensors : {__ ? IndexTensorQ}, output : _List | Automatic : Automatic, prop_String : "Tensor"] := Enclose @ Block[{
-	arrays, metrics, metricIndices, tensorIndices, indexPositions, contractions, newShape, contractedIndexPositions, reindexMetrics, reindex, reindexedArrays
+	arrays, metrics, metricIndices, tensorIndices, indexPositions, contractions, newShape, contractedIndexPositions, reindexMetrics, reindex, reindexedArrays, einsum
 },
 	arrays = Through[tensors["IndexArray"]];
 	metrics = Through[tensors["MetricRules"]];
@@ -49,40 +49,46 @@ IndexContract[tensors : {__ ? IndexTensorQ}, output : _List | Automatic : Automa
 		If[#1["FreeQ"], {#1, #2, Replace[#2[[3]], Append[Catenate[Thread /@ metrics[[#2[[1]]]]], _ -> None]]}, Nothing] &,
 		{Catenate @ Through[tensors["FreeIndices"]], Catenate @ MapIndexed[Append[#2, #1] &, Through[tensors["FreeIndexPositions"]], {2}]}
 	];
-	contractions = Values[Take[#, 2] & /@ Select[GroupBy[Cases[tensorIndices, {_, _, Except[None]}], ({#[[1]]["Name"], Simplify @ Normal[#[[3]]]} &)], Length[#] > 1 &]];
-	contractions = #[[All, ;; 2]] -> If[Equal @@ Through[#[[All, 1]]["Variance"]], #[[1, 3]], None] & /@ contractions;
+    contractions = Values[Take[#, 2] & /@ Select[GroupBy[Cases[tensorIndices, {_, _, Except[None]}], ({#[[1]]["Name"], Simplify @ Normal[#[[3]]]} &)], Length[#] > 1 &]];
+    contractions = #[[All, ;; 2]] -> If[Equal @@ Through[#[[All, 1]]["Sign"]], #[[1, 3]], None] & /@ contractions;
     indexPositions = Catenate @ MapIndexed[#2 &, Through[tensors["Indices"]], {2}];
-	contractedIndexPositions = Lookup[PositionIndex[indexPositions], Catenate[contractions[[All, 1, All, 2, {1, 3}]]]];
+    contractedIndexPositions = Lookup[PositionIndex[indexPositions], Catenate[contractions[[All, 1, All, 2, {1, 3}]]]];
     newShape = Delete[Catenate[Through[tensors["Indices"]]], contractedIndexPositions];
     metrics = Delete[tensorIndices[[All, 3]], contractedIndexPositions];
-    If[ output =!= Automatic, 
-        With[{outPositions = Take[Catenate @ Lookup[PositionIndex[Through[newShape["Name"]]], output, Nothing], UpTo[Length[output]]]},
+    If[ output =!= Automatic,
+        newShape = Catenate[Through[tensors["Indices"]]];
+        metrics = tensorIndices[[All, 3]];
+        With[{outPositions = Take[DeleteDuplicates @ Catenate @ Lookup[PositionIndex[Through[newShape["Name"]]], output, Nothing], UpTo[Length[output]]]},
             newShape = newShape[[outPositions]];
             metrics = metrics[[outPositions]];
+            contractions = Select[contractions, NoneTrue[DeleteDuplicates[#[[1, All, 2, 1]]], MemberQ[outPositions, #] &] &]
         ]
     ];
 
     If[prop === "Shape", Return[newShape]];
 	reindexMetrics = Map[
-		With[{inverseQ = #[[1, 1, 1]]["LowerQ"], names = FreshVariable /@ {"i", "j"}},
-			MapThread[#1[[1]] -> #1[[2]] -> If[inverseQ, 1, -1] * #2 &, {#[[1, All, 2]], names}] ->
-				If[inverseQ, Inverse[#[[2]]] @@ (- names), #[[2]] @@ names]
-		] &, 
+		With[{signs = Through[#[[1, All, 1]]["Sign"]]},
+            If[ Equal @@ signs,
+                With[{covQ = signs[[1]] === -1, name = FreshVariable["i"], pos = #[[1, 1, 2]], metric = #[[2]]}, {names = {#[[1, 1, 1]]["Name"], name}},
+                    (pos[[1]] -> pos[[2]] -> If[covQ, 1, -1] * name) -> If[covQ, Inverse[metric] @@ names, metric @@ (- names)]
+                ],
+                Nothing
+            ]
+        ] &, 
 		Cases[contractions, HoldPattern[_ -> _IndexArray]]
 	];
-	reindex = GroupBy[Catenate[reindexMetrics[[All, 1]]], First -> Last];
+	reindex = reindexMetrics[[All, 1]];
 	reindexedArrays = Join[
-		MapIndexed[
-			With[{newIndex = Lookup[reindex, #2[[1]]]},
-				If[MissingQ[newIndex], #1, #1 @@ newIndex]
-			] &,
+	    MapIndexed[
+            #1 @@ Lookup[reindex, #2, Nothing] &,
 			arrays
 		],
 		reindexMetrics[[All, 2]]
 	];
     If[prop === "Arrays", Return[reindexedArrays]];
+    einsum = Map[#["Name"] &, Through[reindexedArrays["FreeIndices"]], {2}] -> output;
     newArray = IndexArray[
-        EinsteinSummation[Map[#["Name"] &, Through[reindexedArrays["FreeIndices"]], {2}] -> output, Through[reindexedArrays["Array"]]],
+        EinsteinSummation[einsum, Through[reindexedArrays["Array"]]],
         newShape,
         DeleteDuplicates[Catenate[Through[tensors["Parameters"]]]],
         DeleteDuplicates[Catenate[Through[tensors["Assumptions"]]]],
@@ -127,7 +133,7 @@ IndexJuggling[it : _ ? IndexTensorQ | _ ? IndexArrayQ, newIndices_List] := Enclo
     names, newNames, rules, perm, renames, newShape, renamedShape, newArray, newTensor, vars
 },
     l = Length[indices];
-    newNames = SignedSymbolName /@ Replace[newIndices, {d_Dimension :> d["SignedName"], i_Integer /; 0 < Abs[i] <= l :> Sign[i] * indices[[i]]["Name"]}, 1];
+    newNames = SignedSymbolName /@ Replace[newIndices, {d_Dimension :> d["SignedName"], i_Integer /; 0 < Abs[i] <= l :> Sign[i] * indices[[i]]["Name"], _Rule -> Nothing}, 1];
     n = Length[newNames];
     m = Min[l, n];
     names = First /@ PositionIndex[Through[indices["Name"]]];
@@ -140,7 +146,7 @@ IndexJuggling[it : _ ? IndexTensorQ | _ ? IndexArrayQ, newIndices_List] := Enclo
     rules = Catenate @ Values @ GroupBy[rules, First, Prepend[First[#]] @ Map[Missing[] -> #[[2]] &, Rest[#]] &];
     perm = FindPermutation[Join[#, DeleteElements[indexPositions, #]]] & @
         Map[If[MissingQ[#[[1]]], Replace[Replace[#[[2, 1]], rules], {x_, __} :> Replace[Replace[x, rules], {y_, __} :> y]], #[[1]]] &, rules];
-    renames = Cases[rules, (_ -> {k_, l_, True}) :> k -> newNames[[l]]];
+    renames = Join[Cases[rules, (_ -> {k_, l_, True}) :> k -> newNames[[l]]], Cases[newIndices, HoldPattern[i_Integer -> _] /; MemberQ[indexPositions, i]]];
     newShape = Permute[indices, perm];
     rules = Thread[indexPositions -> Permute[indexPositions, InversePermutation[perm]]];
     newArray = IndexArray[
@@ -151,12 +157,12 @@ IndexJuggling[it : _ ? IndexTensorQ | _ ? IndexArrayQ, newIndices_List] := Enclo
     renamedShape = renameShape[newShape, renames];
     If[IndexArrayQ[it], Return[IndexArray[newArray, renamedShape]]];
 
-    newTensor = IndexTensor[newArray, MapAt[Replace[#, rules, 1] &, it["MetricRules"], {All, 1}]];
+    newTensor = ConfirmBy[IndexTensor[newArray, MapAt[Replace[#, rules, 1] &, it["MetricRules"], {All, 1}]], IndexTensorQ];
     rules = Append[_ -> None] @ Catenate[Thread /@ newTensor["Metrics"]];
     vars = MapThread[With[{metric = Replace[#3, rules]},
-            If[ ! #1["FreeQ"] || #1["Variance"] == #2["Variance"] || metric === None,
+            If[ ! #1["FreeQ"] || #1["Sign"] == #2["Sign"] || metric === None,
                 #2,
-                {#3, {FreshVariable["i"], #2["Name"]}, #1["Variance"]}
+                {#3, {FreshVariable["i"], #2["Name"]}, #1["Sign"]}
             ]
         ] &,
         {newShape, renamedShape, Range[l]}
@@ -164,24 +170,31 @@ IndexJuggling[it : _ ? IndexTensorQ | _ ? IndexArrayQ, newIndices_List] := Enclo
     newTensor = ConfirmBy[
         IndexContract[
             {
-                IndexTensor[newArray @@ Replace[vars, {{_, {v_, _}, s_} :> s * v, d_Dimension :> d["SignedName"]}, 1], newTensor["Metrics"]],
+                IndexTensor[newArray @@ MapIndexed[Replace[#1, {{_, {v_, _}, s_} :> s * v, d_Dimension :> d["Sign"] * d["Name"][#2[[1]]]}] &, vars], newTensor["Metrics"]],
                 Splice[
-                    With[{metric = Replace[#[[1]], rules], rename = #[[2]], variance = #[[3]]},
-                        If[ metric === None,
-                            Nothing,
-                            With[{sign = Sign[metric["SignedDimensions"][[1]]]},
-                                IndexTensor[If[variance == sign, Inverse[metric] @@ (- sign * rename), metric @@ (sign * rename)], metric]
-                            ]
-                        ]
-                    ] & /@ Cases[vars, _List]
+                    MapIndexed[
+                        Replace[#1, {
+                            {m_, {v_, w_}, sign_} :> With[{metric = Replace[m, rules], i = #2[[1]]},
+                                If[ metric === None,
+                                    Nothing,
+                                    With[{curSign = Sign[metric["SignedDimensions"][[1]]]},
+                                        IndexTensor[If[sign == curSign, Inverse[metric] @@ (- sign * {w[i], v}), metric @@ (curSign * {w[i], v})], metric]
+                                    ]
+                                ]
+                            ],
+                            _ -> Nothing
+                        }
+                        ] &,
+                        vars
+                    ]
                 ]
             },
-            Join[Replace[vars, {d_Dimension :> d["Name"], {_, {_, v_}, _} :> v}, 1], CanonicalSymbolName /@ Drop[newNames, UpTo[m]]]
+            Join[MapIndexed[Replace[#1, {{_, {_, v_}, _} :> v[#2[[1]]], d_Dimension :> d["Name"][#2[[1]]]}] &, vars], Drop[newNames, UpTo[m]]]
         ],
         IndexTensorQ
     ];
-    newShape = Through[newTensor["Indices"]["SignedName"]];
-    
+    newShape = Replace[Through[newTensor["Indices"]["SignedName"]], {- x_[_] :> - x, x_[_] :> x}, 1];
+    newTensor = IndexTensor[newTensor["IndexArray"] @@ newShape, newTensor["Metrics"]];
     If[ n < l && Take[newShape, UpTo[n]] =!= Take[newNames, UpTo[n]],
         newTensor = newTensor @@ Join[newNames, Drop[newShape, UpTo[n]]]
     ];

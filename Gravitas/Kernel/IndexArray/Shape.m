@@ -25,7 +25,21 @@ Shape[ds : {__Integer}, names_List] /; Length[ds] === Length[names] := With[{nam
 
 Shape[names_List] := Shape[Dimension /@ names]
 
-Shape[s_Shape] := s
+Shape[s_Shape ? ShapeQ, dims : {__Integer}] := Shape @ Join[
+    MapThread[
+        ReplacePart[#1, 1 -> #2] &,
+        {Take[s["Indices"], UpTo[Length[dims]]], Take[dims, UpTo[s["Rank"]]]}
+    ],
+    Drop[s["Indices"], UpTo[Length[dims]]]
+]
+
+Shape[s_Shape ? ShapeQ, dims : {__Dimension}] := Shape @ Join[dims, Drop[s["Indices"], UpTo[Length[dims]]]]
+
+Shape[s_Shape ? ShapeQ, shape_Shape ? ShapeQ] := Shape @ Join[s["Indices"], shape["Indices"]]
+
+Shape[s_Shape ? ShapeQ, names_List] := Shape @ MapThread[Dimension, {s["Indices"], PadRight[names, s["Rank"], None]}]
+
+Shape[s_Shape ? ShapeQ, ___] := s
 
 
 (* Properties *)

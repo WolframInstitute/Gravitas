@@ -35,6 +35,8 @@ ArrayDimensions[Verbatim[Plus][ts___]] := With[{dims = ArrayDimensions /@ {ts}},
     TakeWhile[Thread[PadRight[#, n, 1] & /@ dims], Apply[Equal]][[All, 1]]
 ]
 
+ArrayDimensions[IgnoringInactive[TensorContract[t_, c : {{___Integer} ...}]]] := Delete[ArrayDimensions[t], List /@ Catenate[c]]
+
 
 ArrayRank[t_] := Length[ArrayDimensions[t]]
 
@@ -124,7 +126,12 @@ ArrayPart[t_, {}, ___] := t
 
 ArrayTranspose[t_, perm_] := Transpose[t, Replace[perm, m_ <-> n_ :> Cycles[{{m, n}}]]]
 
-ArrayTranspose[Verbatim[Transpose][t_, perm1_], perm2_] := PermutationList[t, PermutationProduct[perm1, perm2]]
+ArrayTranspose[Verbatim[Transpose][t_, perm1_], perm2_] := ArrayTranspose[t, PermutationList[PermutationProduct[perm1, perm2]]]
+
+
+ArrayContract[array_, c_] := Replace[TensorContract[array, c], Inactive[TensorProduct][t_] :> t]
+
+ArrayContract[arrays_List, c_] := ArrayContract[Inactive[TensorProduct] @@ arrays, c]
 
 
 
@@ -200,17 +207,17 @@ isum[in_List -> out_, arrays_List] := Enclose @ Module[{
     If[! AllTrue[contractions, Equal @@ dimensions[[#]] &], Message[EinsteinSummation::dim]; Confirm[$Failed]];
 	indices = DeleteElements[indices, 1 -> contracted];
 	If[! ContainsAll[indices, out], Message[EinsteinSummation::output]; Confirm[$Failed]];
-    tensor = Activate[TensorContract[Inactive[TensorProduct] @@ newArrays, contractions], TensorProduct];
+    tensor = ArrayContract[newArrays, contractions];
 	multiplicity = Max @ Merge[{Counts[out], Counts[indices]}, Apply[Ceiling[#1 / #2] &]];
 	If[ multiplicity > 1,
 		indices = Catenate @ ConstantArray[indices, multiplicity];
 		contracted = DeleteElements[indices, 1 -> out];
 		contractions = Flatten[Take[Position[indices, #[[1]]], #[[2]]]] & /@ Tally[contracted];
 		indices = DeleteElements[indices, 1 -> contracted];
-		tensor = Activate[TensorContract[Inactive[TensorProduct] @@ ConstantArray[tensor, multiplicity], contractions], TensorContract];
+		tensor = ArrayContract[ConstantArray[tensor, multiplicity], contractions];
 	];
 	transpose = FindPermutation[indices, out];
-	If[ArrayQ[tensor], Transpose[tensor, transpose], tensor]
+	Transpose[tensor, transpose]
 ]
 
 EinsteinSummation::length = "Number of index specifications (`1`) does not match the number of tensors (`2`)";

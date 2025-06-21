@@ -44,7 +44,13 @@ Dimension[Dimension[dim_, name_, indices_List : {}, _ : None, args___] ? Dimensi
 
 Dimension[Dimension[dim_, name_, _, args___] ? DimensionQ, indices_List] := Dimension[dim, name, indices, args]
 
-Dimension[Dimension[dim_, name_, args___] ? DimensionQ, newName_, newArgs___] := Dimension[dim, Replace[newName, All | Inherited -> name], newArgs, ##] & @@ Drop[{args}, UpTo[Length[{newArgs}]]]
+Dimension[Dimension[dim_, name_, args___] ? DimensionQ, newName_, newArgs___] :=
+    Dimension[
+        Replace[newName, {- _ -> -1, _ -> 1}] * dim,
+        Replace[newName, {All | Inherited -> name, - x_ :> x}],
+        newArgs,
+        ##
+    ] & @@ Drop[{args}, UpTo[Length[{newArgs}]]]
 
 Dimension[d_Dimension ? DimensionQ] := d
 
